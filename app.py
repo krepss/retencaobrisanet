@@ -187,31 +187,52 @@ else:
                 up_ad = st.file_uploader("1. Aderência", type=["csv"], key="ad")
                 if up_ad and st.button("Salvar Aderência"):
                     suc, msg = enviar_para_github("dados_aderencia.csv", up_ad)
-                    if suc: st.success(msg) else: st.error(msg)
+                    if suc:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+                        
                 up_pq = st.file_uploader("2. Pesquisa", type=["csv"], key="pq")
                 if up_pq and st.button("Salvar Pesquisa"):
                     suc, msg = enviar_para_github("dados_pesquisa.csv", up_pq)
-                    if suc: st.success(msg) else: st.error(msg)
+                    if suc:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
             with c2:
                 st.subheader("Operação")
                 up_ch = st.file_uploader("3. Chat", type=["csv"], key="ch")
                 if up_ch and st.button("Salvar Chat"):
                     suc, msg = enviar_para_github("dados_chat.csv", up_ch)
-                    if suc: st.success(msg) else: st.error(msg)
+                    if suc:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+                        
                 up_vz = st.file_uploader("4. Voz", type=["csv"], key="vz")
                 if up_vz and st.button("Salvar Voz"):
                     suc, msg = enviar_para_github("dados_voz.csv", up_vz)
-                    if suc: st.success(msg) else: st.error(msg)
+                    if suc:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
             with c3:
                 st.subheader("Retenção/Acessos")
                 up_rt = st.file_uploader("5. Retenção", type=["csv"], key="rt")
                 if up_rt and st.button("Salvar Retenção"):
                     suc, msg = enviar_para_github("dados_retencao.csv", up_rt)
-                    if suc: st.success(msg) else: st.error(msg)
+                    if suc:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+                        
                 up_us = st.file_uploader("6. Utilizadores", type=["csv"], key="us")
                 if up_us and st.button("Salvar Utilizadores"):
                     suc, msg = enviar_para_github("dados_usuarios.csv", up_us)
-                    if suc: st.success(msg) else: st.error(msg)
+                    if suc:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
                     
         # ABA: DASHBOARD GESTOR
         with aba_dashboard:
