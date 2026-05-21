@@ -24,10 +24,8 @@ ANOS = ["2026", "2027", "2028", "2029", "2030"]
 # ==========================================
 # GESTOR DE COOKIES E SESSÃO
 # ==========================================
-# Inicializa o gestor de Cookies
 cookie_manager = stx.CookieManager()
 
-# Restaura a sessão a partir do Cookie se a página for atualizada (F5)
 if cookie_manager.get(cookie="logged_in") == "True":
     st.session_state.logged_in = True
     st.session_state.perfil = cookie_manager.get(cookie="perfil")
@@ -45,13 +43,12 @@ def fazer_logout():
     st.session_state.perfil = ""
     st.session_state.user_email = ""
     st.session_state.user_nome = ""
-    # Apaga os cookies
     cookie_manager.delete("logged_in")
     cookie_manager.delete("perfil")
     cookie_manager.delete("user_email")
     cookie_manager.delete("user_nome")
     st.cache_data.clear()
-    time.sleep(1) # Dá tempo ao navegador para apagar os cookies antes de atualizar
+    time.sleep(1)
 
 # ==========================================
 # FUNÇÕES DE TRATAMENTO E GITHUB
@@ -115,19 +112,17 @@ if not st.session_state.logged_in:
         senha_input = st.text_input("Senha", type="password")
         
         if st.button("Entrar", use_container_width=True):
-            # Validação anti-espaços e anti-maiúsculas
             if email_input.strip().lower() == GESTOR_EMAIL.lower() and senha_input.strip() == GESTOR_SENHA:
                 st.session_state.logged_in = True
                 st.session_state.perfil = "Gestor"
                 st.session_state.user_nome = "Gestor"
                 
-                # Guarda nos cookies do navegador
                 cookie_manager.set("logged_in", "True")
                 cookie_manager.set("perfil", "Gestor")
                 cookie_manager.set("user_nome", "Gestor")
                 
-                st.success("Login efetuado com sucesso! A preparar ambiente...")
-                time.sleep(1.2) # Pausa rápida para o navegador gravar o cookie
+                st.success("Login efetuado com sucesso! Preparando ambiente...")
+                time.sleep(1.2)
                 st.rerun() 
             else:
                 try:
@@ -141,19 +136,18 @@ if not st.session_state.logged_in:
                         st.session_state.user_email = email_input.strip()
                         st.session_state.user_nome = str(nome_operador).title()
                         
-                        # Guarda nos cookies
                         cookie_manager.set("logged_in", "True")
                         cookie_manager.set("perfil", "Agente")
                         cookie_manager.set("user_email", email_input.strip())
                         cookie_manager.set("user_nome", str(nome_operador).title())
                         
-                        st.success("Login efetuado com sucesso! A preparar ambiente...")
+                        st.success("Login efetuado com sucesso! Preparando ambiente...")
                         time.sleep(1.2)
                         st.rerun()
                     else:
                         st.error("E-mail não encontrado ou senha incorreta.")
                 except Exception:
-                    st.warning("Base de usuários indisponível. Apenas o Gestor pode acessar para realizar a primeira configuração.")
+                    st.warning("Sistema inicializando. Se você for o Gestor, use as credenciais administrativas para realizar a primeira configuração.")
 
 # ==========================================
 # SISTEMA LOGADO
@@ -173,19 +167,24 @@ else:
         
     st.sidebar.markdown("---")
 
-    # --- CARREGAR DADOS DO DASHBOARD ---
+    # --- TENTATIVA DE LEITURA DA BASE MASTER ---
+    base_mestre_existe = True
+    erro_dados = ""
+    
     try:
         df_completo = carregar_dados_mestre()
         df_periodo = df_completo[(df_completo['Mês'] == mes_view) & (df_completo['Ano'] == str(ano_view))]
         
         if df_periodo.empty:
             dados_carregados = False
-            erro_dados = f"Ainda não existem registros para {mes_view} de {ano_view}."
+            erro_dados = f"Ainda não existem registros consolidados para {mes_view} de {ano_view}."
         else:
             dados_carregados = True
-    except urllib.error.HTTPError:
+            
+    except (urllib.error.HTTPError, FileNotFoundError, pd.errors.EmptyDataError):
+        # Captura caso o arquivo 'dados_consolidados_master.csv' não exista no Git
+        base_mestre_existe = False
         dados_carregados = False
-        erro_dados = "A base mestre ainda não foi criada no GitHub."
     except Exception as e:
         dados_carregados = False
         erro_dados = str(e)
@@ -199,7 +198,7 @@ else:
         # ABA 1: GESTÃO DA EQUIPE
         with aba_equipe:
             st.header("👥 Gestão de Usuários e Acessos")
-            st.markdown("Adicione, edite ou remova membros da equipe diretamente na tabela abaixo. **Não esqueça de clicar em Salvar** após realizar alterações.")
+            st.markdown("Adicione, edite ou remova membros da equipe diretamente na tabela abaixo.")
             
             try:
                 df_users_atual = pd.read_csv(f"{BASE_URL}dados_usuarios.csv")
@@ -214,10 +213,10 @@ else:
                         else:
                             st.error(msg)
                             
-            except urllib.error.HTTPError:
-                st.warning("O arquivo de usuários ainda não existe. Faça o upload do arquivo base para criá-lo.")
+            except (urllib.error.HTTPError, FileNotFoundError):
+                st.warning("O arquivo base de usuários ainda não existe no seu repositório Git.")
                 up_us_inicial = st.file_uploader("Upload inicial de Usuários (CSV)", type=["csv"])
-                if up_us_inicial and st.button("Criar Base Inicial"):
+                if up_us_inicial and st.button("Criar Base Inicial de Usuários"):
                     suc, msg = enviar_para_github("dados_usuarios.csv", up_us_inicial)
                     if suc:
                         st.success("Criado com sucesso! Atualize a página para visualizar a tabela editável.")
@@ -250,7 +249,7 @@ else:
             
             if st.button("🚀 Processar e Atualizar Base Mestre", type="primary", use_container_width=True):
                 if up_ad and up_pq and up_ch and up_vz and up_rt:
-                    with st.spinner(f"Atualizando base com os dados de {mes_up}/{ano_up}... Aguarde!"):
+                    with st.spinner(f"Processando e consolidando os dados para {mes_up}/{ano_up}..."):
                         try:
                             df_perf = pd.read_csv(up_ad)
                             df_ret = pd.read_csv(up_rt)
@@ -304,19 +303,26 @@ else:
                             suc_mega, msg_mega = enviar_para_github("dados_consolidados_master.csv", csv_final)
                             
                             if suc_mega:
-                                st.success(f"Tudo pronto! Base Mestre atualizada com sucesso para o período {mes_up}/{ano_up}.")
+                                st.success(f"Sucesso! Base Mestre inicializada/atualizada para o período de {mes_up}/{ano_up}.")
+                                time.sleep(1.5)
+                                st.rerun()
                             else:
-                                st.warning("Houve um erro ao atualizar o repositório. Verifique suas credenciais.")
+                                st.warning("Erro ao salvar o arquivo consolidado no GitHub.")
                                 
                         except Exception as e:
-                            st.error(f"Erro durante o processamento dos dados: {e}")
+                            st.error(f"Erro no processamento técnico dos dados: {e}")
                 else:
-                    st.error("⚠️ Faltam arquivos! Por favor, coloque os 5 relatórios nas caixas.")
+                    st.error("⚠️ Por favor, adicione todos os 5 relatórios obrigatórios antes de processar.")
                     
         # ABA 3: DASHBOARD GESTOR
         with aba_dashboard:
-            if not dados_carregados:
+            if not base_mestre_existe:
+                st.info("👋 **Bem-vindo ao Sistema!**")
+                st.warning("📢 A base mestre ainda não foi criada no GitHub.")
+                st.markdown("💡 **Como inicializar o sistema:** Vá para a aba **'⚙️ Consolidação (Mensal)'**, selecione o mês desejado, anexe os 5 relatórios e clique em **'Processar e Atualizar Base Mestre'**. Isso criará automaticamente o repositório integrado!")
+            elif not dados_carregados:
                 st.warning(f"⚠️ {erro_dados}")
+                st.info(f"Se desejar carregar dados para este período, utilize a aba de Consolidação Mensal.")
             else:
                 st.title(f"📈 Dashboard Operacional ({mes_view}/{ano_view})")
                 agentes = ["Todos"] + list(df_periodo['Nome Exibição'].dropna().unique())
@@ -342,11 +348,12 @@ else:
     # VISÃO DO AGENTE (INDIVIDUAL E DIRETA)
     # ==========================================
     elif st.session_state.perfil == "Agente":
-        if not dados_carregados:
+        if not base_mestre_existe:
+            st.error("⚠️ O sistema está sendo configurado e inicializado pelo Gestor neste momento. Por favor, tente novamente mais tarde.")
+        elif not dados_carregados:
             st.warning(f"⚠️ {erro_dados}")
         else:
             st.title(f"👤 Meu Painel ({mes_view}/{ano_view})")
-            
             meus_dados = df_periodo[df_periodo['E-mail'] == st.session_state.user_email]
             
             if not meus_dados.empty:
@@ -378,4 +385,4 @@ else:
                 cr2.metric("Volume Retido", int(rt_valido) if pd.notna(rt_valido) else 0)
                 cr3.metric("Minha Taxa", f"{minha_tx_ret:.2f}%")
             else:
-                st.info("Ainda não tem métricas registradas para você neste período. Vá acompanhando as próximas atualizações!")
+                st.info("Nenhum dado operacional associado ao seu perfil para o mês selecionado.")
