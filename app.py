@@ -2,7 +2,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from github import Github
+import urllib.request
 import urllib.error
+import io
 import time
 
 # ==========================================
@@ -10,7 +12,7 @@ import time
 # ==========================================
 st.set_page_config(page_title="Sistema Operacional 360", page_icon="🎯", layout="wide")
 
-GESTOR_EMAIL = "gestor"
+GESTOR_EMAIL = "admin@brisanet.com.br"
 GESTOR_SENHA = "admin"
 SENHA_PADRAO_AGENTE = "1234" 
 
@@ -21,7 +23,7 @@ MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "A
 ANOS = ["2026", "2027", "2028", "2029", "2030"]
 
 # ==========================================
-# GESTÃO DE SESSÃO (MEMÓRIA DE LOGIN NATIVA)
+# GESTÃO DE SESSÃO NATIVA (MEMÓRIA DO STREAMLIT)
 # ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -37,8 +39,18 @@ def fazer_logout():
     st.cache_data.clear() 
 
 # ==========================================
-# FUNÇÕES DE TRATAMENTO E GITHUB
+# FUNÇÕES DE LEITURA SEGURA (RESOLVE ERRO DE CONEXÃO)
 # ==========================================
+def ler_csv_seguro_github(url_arquivo):
+    """ Força o GitHub a liberar o arquivo de texto puro sem bloqueios """
+    req = urllib.request.Request(
+        url_arquivo, 
+        headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+    )
+    with urllib.request.urlopen(req) as response:
+        conteudo_texto = response.read().decode('utf-8')
+    return pd.read_csv(io.StringIO(conteudo_texto))
+
 def limpar_porcentagem(valor):
     if pd.isna(valor): return 0.0
     valor_str = str(valor).replace('%', '').replace(',', '.')
@@ -75,32 +87,29 @@ def enviar_para_github(nome_arquivo_git, conteudo):
     except Exception as e:
         return False, f"Erro no GitHub: {e}"
 
-@st.cache_data(ttl=10)
-def carregar_dados_mestre():
-    url_dados = f"{BASE_URL}dados_consolidados_master.csv"
-    df_completo = pd.read_csv(url_dados)
-    df_completo['Ano'] = df_completo['Ano'].astype(str)
-    return df_completo
+@st.cache_data(ttl=5) # Cache baixíssimo de 5 segundos para atualizar na hora após uploads!
+def carregar_dados_mestre_seguro():
+    df = ler_csv_seguro_github(f"{BASE_URL}dados_consolidados_master.csv")
+    df['Ano'] = df['Ano'].astype(str).str.strip()
+    df['Mês'] = df['Mês'].astype(str).str.strip().str.title() # Padroniza ex: "Maio"
+    return df
 
 # ==========================================
 # TELA DE LOGIN
 # ==========================================
 if not st.session_state.logged_in:
-    st.markdown("<h1 style='text-align: center;'>🔐 Acesso ao Sistema</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>🔐 Acesso ao Sistema Operacional 360</h1>", unsafe_allow_html=True)
     
     col_vazia1, col_login, col_vazia2 = st.columns([1, 2, 1])
     
     with col_login:
-        # O st.form garante que o sistema só processa após o clique ou tecla ENTER
         with st.form("form_login"):
             st.markdown("### Por favor, insira suas credenciais")
             email_input = st.text_input("E-mail corporativo")
             senha_input = st.text_input("Senha", type="password")
-            
             submit_login = st.form_submit_button("Entrar", use_container_width=True)
         
         if submit_login:
-            # Limpeza rigorosa para evitar falhas por espaços invisíveis
             email_limpo = email_input.strip().lower()
             senha_limpa = senha_input.strip()
             
@@ -109,52 +118,36 @@ if not st.session_state.logged_in:
                 st.session_state.perfil = "Gestor"
                 st.session_state.user_nome = "Gestor"
                 st.success("Login de Gestor efetuado com sucesso!")
-                time.sleep(1)
-                
-                # Compatibilidade com qualquer versão do Streamlit
-                if hasattr(st, 'rerun'):
-                    st.rerun()
-                else:
-                    st.experimental_rerun()
+                time.sleep(0.5)
+                st.rerun() 
             else:
                 try:
-                    df_users_login = pd.read_csv(f"{BASE_URL}dados_usuarios.csv")
-                    lista_emails = df_users_login['E-mail'].dropna().tolist()
+                    df_users_login = ler_csv_seguro_github(f"{BASE_URL}dados_usuarios.csv")
+                    lista_emails = df_users_login['E-mail'].dropna().str.strip().str.lower().tolist()
                     
                     if email_limpo in lista_emails and senha_limpa == SENHA_PADRAO_AGENTE:
-                        nome_operador = df_users_login[df_users_login['E-mail'] == email_limpo].iloc[0]['Nome']
+                        dados_usr = df_users_login[df_users_login['E-mail'].str.strip().str.lower() == email_limpo].iloc[0]
                         st.session_state.logged_in = True
                         st.session_state.perfil = "Agente"
                         st.session_state.user_email = email_limpo
-                        st.session_state.user_nome = str(nome_operador).title()
+                        st.session_state.user_nome = str(dados_usr['Nome']).title()
                         st.success("Login de Agente efetuado com sucesso!")
-                        time.sleep(1)
-                        
-                        if hasattr(st, 'rerun'):
-                            st.rerun()
-                        else:
-                            st.experimental_rerun()
+                        time.sleep(0.5)
+                        st.rerun()
                     else:
                         st.error("❌ E-mail não encontrado ou senha incorreta.")
                 except Exception:
-                    st.warning("⚠️ Sistema inicializando. A base de usuários não existe ainda.")
-                    st.info("Para o primeiro acesso, certifique-se de que está usando exatamente o e-mail: admin@brisanet.com.br e senha: admin")
-
-# ==========================================
-# SISTEMA LOGADO
-# ==========================================
-# (MANTENHA O RESTO DO SEU CÓDIGO A PARTIR DAQUI INTACTO)
+                    st.warning("⚠️ Sistema inicializando. Arquivo de usuários indisponível no repositório.")
 
 # ==========================================
 # SISTEMA LOGADO
 # ==========================================
 else:
-    # --- BARRA LATERAL (COMUM A TODOS) ---
     st.sidebar.title("Opções")
     st.sidebar.success(f"Logado como: **{st.session_state.user_nome}**")
     
     st.sidebar.markdown("### 📅 Filtro de Período")
-    mes_view = st.sidebar.selectbox("Selecione o Mês:", MESES)
+    mes_view = st.sidebar.selectbox("Selecione o Mês:", MESES, index=4) # Pré-seleciona "Maio"
     ano_view = st.sidebar.selectbox("Selecione o Ano:", ANOS)
     
     if st.sidebar.button("🚪 Sair (Logout)", use_container_width=True):
@@ -168,18 +161,19 @@ else:
     erro_dados = ""
     
     try:
-        df_completo = carregar_dados_mestre()
-        df_periodo = df_completo[(df_completo['Mês'] == mes_view) & (df_completo['Ano'] == str(ano_view))]
+        df_completo = carregar_dados_mestre_seguro()
+        # Filtro inteligente insensível a maiúsculas/minúsculas
+        df_periodo = df_completo[(df_completo['Mês'].str.lower() == mes_view.lower()) & (df_completo['Ano'] == str(ano_view))]
         
         if df_periodo.empty:
             dados_carregados = False
-            erro_dados = f"Ainda não existem registos consolidados para {mes_view} de {ano_view}."
+            erro_dados = f"Ainda não existem registros consolidados para {mes_view} de {ano_view}."
         else:
             dados_carregados = True
-            
-    except Exception:
+    except Exception as e:
         base_mestre_existe = False
         dados_carregados = False
+        erro_dados = str(e)
 
     # ==========================================
     # VISÃO DO GESTOR
@@ -191,7 +185,7 @@ else:
         with aba_equipe:
             st.header("👥 Gestão de Usuários e Acessos")
             try:
-                df_users_atual = pd.read_csv(f"{BASE_URL}dados_usuarios.csv")
+                df_users_atual = ler_csv_seguro_github(f"{BASE_URL}dados_usuarios.csv")
                 df_users_editado = st.data_editor(df_users_atual, num_rows="dynamic", use_container_width=True)
                 
                 if st.button("💾 Salvar Alterações da Equipe no GitHub", type="primary"):
@@ -200,6 +194,7 @@ else:
                         suc, msg = enviar_para_github("dados_usuarios.csv", csv_usr)
                         if suc:
                             st.success("Lista de usuários atualizada com sucesso!")
+                            st.cache_data.clear()
                         else:
                             st.error(msg)
             except Exception:
@@ -208,14 +203,16 @@ else:
                 if up_us_inicial and st.button("Criar Base Inicial de Usuários"):
                     suc, msg = enviar_para_github("dados_usuarios.csv", up_us_inicial)
                     if suc:
-                        st.success("Criado com sucesso! Atualize a página.")
+                        st.success("Criado com sucesso! Atualizando...")
+                        st.cache_data.clear()
+                        time.sleep(1)
                         st.rerun()
 
         # ABA 2: ADMINISTRAÇÃO E CONSOLIDAÇÃO
         with aba_upload:
             st.header("⚙️ Atualizar Base Histórica (Master)")
             col_m, col_a = st.columns(2)
-            mes_up = col_m.selectbox("Mês dos dados:", MESES)
+            mes_up = col_m.selectbox("Mês dos dados:", MESES, index=4)
             ano_up = col_a.selectbox("Ano dos dados:", ANOS)
             
             st.markdown("---")
@@ -240,7 +237,7 @@ else:
                             df_chat = pd.read_csv(up_ch)
                             df_voz = pd.read_csv(up_vz)
                             df_pesq = pd.read_csv(up_pq)
-                            df_users = pd.read_csv(f"{BASE_URL}dados_usuarios.csv")
+                            df_users = ler_csv_seguro_github(f"{BASE_URL}dados_usuarios.csv")
                             
                             df_perf['Aderência (%)'] = df_perf['Aderência (%)'].apply(limpar_porcentagem)
                             df_perf['Conformidade (%)'] = df_perf['Conformidade (%)'].apply(limpar_porcentagem)
@@ -274,11 +271,10 @@ else:
                             df_novo['Mês'] = mes_up
                             df_novo['Ano'] = str(ano_up)
                             
-                            url_master = f"{BASE_URL}dados_consolidados_master.csv"
                             try:
-                                df_master = pd.read_csv(url_master)
+                                df_master = ler_csv_seguro_github(f"{BASE_URL}dados_consolidados_master.csv")
                                 df_master['Ano'] = df_master['Ano'].astype(str)
-                                df_master = df_master[~((df_master['Mês'] == mes_up) & (df_master['Ano'] == str(ano_up)))]
+                                df_master = df_master[~((df_master['Mês'].str.lower() == mes_up.lower()) & (df_master['Ano'] == str(ano_up)))]
                                 df_final = pd.concat([df_master, df_novo], ignore_index=True)
                             except Exception:
                                 df_final = df_novo
@@ -287,7 +283,7 @@ else:
                             suc_mega, msg_mega = enviar_para_github("dados_consolidados_master.csv", csv_final)
                             
                             if suc_mega:
-                                st.cache_data.clear()
+                                st.cache_data.clear() # Limpeza absoluta de memória técnica
                                 st.success(f"Sucesso! Base Mestre atualizada para {mes_up}/{ano_up}.")
                                 time.sleep(1)
                                 st.rerun()
@@ -302,8 +298,8 @@ else:
         with aba_dashboard:
             if not base_mestre_existe:
                 st.info("👋 **Bem-vindo ao Sistema!**")
-                st.warning("📢 A base mestre ainda não foi criada no GitHub.")
-                st.markdown("💡 **Como inicializar:** Vá para a aba **'⚙️ Consolidação (Mensal)'**, selecione **Maio**, anexe os seus 5 relatórios operacionais e clique em **'Processar e Atualizar Base Mestre'**.")
+                st.warning("📢 A base mestre ainda não foi criada no GitHub ou está inacessível.")
+                st.markdown("💡 **Como inicializar:** Vá para a aba **'⚙️ Consolidação (Mensal)'**, anexe os seus 5 relatórios operacionais atuais e clique em **'Processar e Atualizar Base Mestre'**.")
             elif not dados_carregados:
                 st.warning(f"⚠️ {erro_dados}")
             else:
