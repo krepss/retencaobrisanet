@@ -91,9 +91,16 @@ def enviar_para_github(nome_arquivo_git, conteudo):
 
 def limpar_porcentagem(valor):
     if pd.isna(valor): return 0.0
-    valor_str = str(valor).replace('%', '').replace(',', '.')
-    if valor_str.lower() == 'nan': return 0.0
-    return float(valor_str)
+    # Se já for um float menor ou igual a 1 (como o seu arquivo original veio: 0.5937)
+    try:
+        val = float(valor)
+        if val <= 1.0 and val > 0:
+            return val * 100
+        return val
+    except ValueError:
+        valor_str = str(valor).replace('%', '').replace(',', '.')
+        if valor_str.lower() == 'nan': return 0.0
+        return float(valor_str)
 
 def ms_para_minutos(ms):
     if pd.isna(ms): return 0.0
@@ -149,7 +156,7 @@ if not st.session_state.logged_in:
                     else:
                         st.error("❌ E-mail não encontrado ou senha incorreta.")
                 except Exception:
-                    st.warning("⚠️ Sistema a inicializar. Base de dados de utilizadores indisponível no repositório.")
+                    st.warning("⚠️ Base de dados de utilizadores indisponível no repositório.")
 
 # ==========================================
 # SISTEMA LOGADO
@@ -234,7 +241,7 @@ else:
                 up_ch = st.file_uploader("3. Chat", type=["csv"])
                 up_vz = st.file_uploader("4. Voz", type=["csv"])
             with c3:
-                up_rt = st.file_uploader("5. Retenção", type=["csv"])
+                up_rt = st.file_uploader("5. Retenção (Use o Relatório Estratégico)", type=["csv"])
                 
             st.markdown("---")
             
@@ -254,10 +261,16 @@ else:
                             df_perf['Chave_Nome'] = df_perf['Agente'].astype(str).str.strip().str.upper()
                             df_users['Chave_Nome'] = df_users['Nome'].astype(str).str.strip().str.upper()
                             
-                            # --- CAPTURA DIRETA DOS DADOS CONFORME A SUA PLANILHA ---
+                            # --- CAPTURA AVANÇADA DA RETENÇÃO ---
                             df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
                             df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                             df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
+                            
+                            # Calcula de forma reversa o total tratado real para ponderação exata posterior
+                            df_ret['RT geral calculado'] = df_ret.apply(
+                                lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'],
+                                axis=1
+                            ).fillna(0)
                             
                             df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
                             df_chat_agg = df_chat.groupby('Chave_Nome').agg({'Atendidas': 'sum', 'Tratamento médio': 'mean', 'Espera média': 'mean'}).reset_index()
@@ -282,7 +295,7 @@ else:
                             ).reset_index()
 
                             df_novo = pd.merge(df_users, df_perf, on='Chave_Nome', how='left')
-                            df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'Taxa_Retencao_Original']], on='Chave_Nome', how='left')
+                            df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculado', 'Taxa_Retencao_Original']], on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_chat_agg, on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_voz_agg, on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_pesq_agg, on='Chave_Nome', how='left')
@@ -304,7 +317,7 @@ else:
                             
                             if suc_mega:
                                 st.cache_data.clear()
-                                st.success(f"Sucesso! Base Mestre alinhada com as porcentagens oficiais para {mes_up}/{ano_up}.")
+                                st.success(f"Sucesso! Base Mestre calibrada para {mes_up}/{ano_up} com os dados estratégicos!")
                                 time.sleep(0.5)
                                 st.rerun()
                             else:
@@ -352,12 +365,19 @@ else:
                 v_ade = df_view['Aderência (%)'].mean()
                 v_conf = df_view['Conformidade (%)'].mean()
                 
-                # --- CORREÇÃO DA RETENÇÃO COM BASE NO SEU FORMATO ---
+                # --- CÁLCULO PONDERADO DA RETENÇÃO BRISANET ---
                 total_rt_valido = df_view['RT geral valido'].sum() if 'RT geral valido' in df_view.columns else 0
-                if col_m.selectbox and tem_coluna_ret_original:
-                    # Traz a média exata das porcentagens oficiais geradas pelo seu CRM
-                    v_retencao = df_view['Taxa_Retencao_Original'].mean()
-                    sub_legenda_ret = f"Total Acumulado: {int(total_rt_valido)} retidos válidos"
+                
+                if tem_coluna_ret_original:
+                    if filtro_agente == "Todos":
+                        # Para a equipe inteira, calculamos a média ponderada pelo volume de válidas de cada um
+                        total_calculado_equipe = df_view['RT geral calculado'].sum()
+                        v_retencao = (total_rt_valido / total_calculado_equipe * 100) if total_calculado_equipe > 0 else 0.0
+                        sub_legenda_ret = f"Total da Operação: {int(total_rt_valido):,} retidos válidos"
+                    else:
+                        # Para um único agente, traz o valor exato dele
+                        v_retencao = df_view['Taxa_Retencao_Original'].iloc[0]
+                        sub_legenda_ret = f"Total Individual: {int(total_rt_valido)} retidos"
                 else:
                     v_retencao = 0.0
                     sub_legenda_ret = "⚠️ Atualize a planilha na aba ao lado"
