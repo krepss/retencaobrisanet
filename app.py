@@ -17,7 +17,7 @@ SENHA_PADRAO_AGENTE = "1234"
 MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
 ANOS = ["2026", "2027", "2028", "2029", "2030"]
 
-# ESTILIZAÇÃO CSS PARA OS CARDS INJETADOS
+# ESTILIZAÇÃO CSS PARA OS CARDS
 st.markdown("""
     <style>
         .kpi-card {
@@ -45,7 +45,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# GESTÃO DE SESSÃO NATIVA (MEMÓRIA DO STREAMLIT)
+# GESTÃO DE SESSÃO NATIVA
 # ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -101,6 +101,13 @@ def calcular_ir(serie_ir):
     if len(validos) == 0: return 0.0
     qtd_sim = (validos.astype(str).str.strip().str.upper() == 'SIM').sum()
     return (qtd_sim / len(validos)) * 100
+
+def calcular_csat_percentual(serie_csat):
+    """ Calcula a porcentagem de notas de satisfação 4 e 5 (Top Box) """
+    validos = pd.to_numeric(serie_csat, errors='coerce').dropna()
+    if len(validos) == 0: return 0.0
+    satisfatorios = (validos >= 4).sum()
+    return (satisfatorios / len(validos)) * 100
 
 def ms_para_minutos(ms):
     if pd.isna(ms): return 0.0
@@ -275,8 +282,7 @@ else:
                             df_voz_agg['TME Voz (Min)'] = df_voz_agg['TME Voz (ms)'].apply(ms_para_minutos)
                             
                             df_pesq['Chave_Nome'] = df_pesq['Atendente'].astype(str).str.strip().str.upper()
-                            df_pesq['CSAT'] = pd.to_numeric(df_pesq['CSAT'], errors='coerce')
-                            df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(CSAT_Media=('CSAT', 'mean'), IR_Percentual=('IR', calcular_ir)).reset_index()
+                            df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(CSAT_Media=('CSAT', calcular_csat_percentual), IR_Percentual=('IR', calcular_ir)).reset_index()
 
                             df_novo = pd.merge(df_users, df_perf, on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_ret, on='Chave_Nome', how='left')
@@ -327,8 +333,8 @@ else:
                 
                 df_view = df_periodo[df_periodo['Nome Exibição'] == filtro_agente] if filtro_agente != "Todos" else df_periodo.copy()
 
-                # --- PROCESSAMENTO DOS INDICADORES GERAIS (CARDS BRISANET) ---
-                v_csat = df_view['CSAT_Media'].mean()
+                # --- PROCESSAMENTO DOS INDICADORES GERAIS (MÉDIAS REAIS) ---
+                v_csat = df_view['CSAT_Media'].mean() # Agora representa a média das porcentagens dos agentes filtrados
                 v_ir = df_view['IR_Percentual'].mean()
                 v_ade = df_view['Aderência (%)'].mean()
                 v_conf = df_view['Conformidade (%)'].mean()
@@ -349,7 +355,7 @@ else:
                 c1, c2, c3, c4, c5 = st.columns(5)
                 
                 with c1:
-                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>⭐ Média CSAT</div><div class='kpi-value'>{v_csat:.2f}</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>⭐ CSAT (%)</div><div class='kpi-value'>{v_csat:.1f}%</div></div>", unsafe_allow_html=True)
                 with c2:
                     st.markdown(f"<div class='kpi-card'><div class='kpi-title'>🎯 Média IR</div><div class='kpi-value'>{v_ir:.1f}%</div></div>", unsafe_allow_html=True)
                 with c3:
@@ -359,7 +365,7 @@ else:
                 with c5:
                     st.markdown(f"<div class='kpi-card'><div class='kpi-title'>🛡️ Conformidade</div><div class='kpi-value'>{v_conf:.1f}%</div></div>", unsafe_allow_html=True)
 
-                # === FILEIRA 2 DE CARDS (VOLUMETRIAS E PRODUTIVIDADE) ===
+                # === FILEIRA 2 DE CARDS (VOLUMETRIAS) ===
                 st.subheader("📊 Volumetria e Tempo de Atendimento (TMA)")
                 cx1, cx2, cx3, cx4 = st.columns(4)
                 
@@ -380,7 +386,7 @@ else:
                 df_tabela = df_view[colunas].copy()
                 df_tabela['% Retenção'] = (df_tabela['RT geral valido'] / df_tabela['RT geral']) * 100
                 st.dataframe(df_tabela.style.format({
-                    'CSAT_Media': '{:.2f}', 
+                    'CSAT_Media': '{:.1f}%', 
                     'IR_Percentual': '{:.1f}%', 
                     'Aderência (%)': '{:.1f}%', 
                     'Conformidade (%)': '{:.1f}%', 
@@ -407,11 +413,10 @@ else:
             if not meus_dados.empty:
                 dados = meus_dados.iloc[0]
                 
-                # CARDS PARA O AGENTE INDIVIDUAL
                 st.markdown("### ⭐ Minha Performance")
                 ca1, ca2, ca3, ca4 = st.columns(4)
                 with ca1:
-                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu CSAT</div><div class='kpi-value'>{dados['CSAT_Media']:.2f}</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu CSAT</div><div class='kpi-value'>{dados['CSAT_Media']:.1f}%</div></div>", unsafe_allow_html=True)
                 with ca2:
                     st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu IR</div><div class='kpi-value'>{dados['IR_Percentual']:.1f}%</div></div>", unsafe_allow_html=True)
                 with ca3:
@@ -424,10 +429,10 @@ else:
                 with co1:
                     st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Chats Atendidos</div><div class='kpi-value'>{int(dados['Vol. Chat']) if pd.notna(dados['Vol. Chat']) else 0}</div></div>", unsafe_allow_html=True)
                 with co2:
-                    st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Meu TMA Chat</div><div class='kpi-value'>{dados['TMA Chat (Min']:.1f} m</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Meu TMA Chat</div><div class='kpi-value'>{dados['TMA Chat (Min)']:.1f} m</div></div>", unsafe_allow_html=True)
                 with co3:
                     st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
-                with cx4:
+                with co4:
                     st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Meu TMA Voz</div><div class='kpi-value'>{dados['TMA Voz (Min)']:.1f} m</div></div>", unsafe_allow_html=True)
             else:
                 st.info("Nenhum dado operacional associado ao seu perfil para o mês selecionado.")
