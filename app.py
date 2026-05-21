@@ -59,7 +59,7 @@ def enviar_para_github(nome_arquivo_git, conteudo):
         g = Github(st.secrets["GITHUB_TOKEN"])
         repo = g.get_repo(st.secrets["GITHUB_REPO"])
         
-        # Verifica se é um ficheiro de upload direto ou texto processado
+        # Verifica se é um upload de arquivo ou um texto processado pelo pandas (edição)
         if hasattr(conteudo, 'getvalue'):
             conteudo_final = conteudo.getvalue()
         else:
@@ -79,10 +79,8 @@ def enviar_para_github(nome_arquivo_git, conteudo):
 
 @st.cache_data(ttl=600)
 def carregar_dados_mestre():
-    # Carrega a base de dados consolidada única
     url_dados = f"{BASE_URL}dados_consolidados_master.csv"
     df_completo = pd.read_csv(url_dados)
-    # Garante que o Ano é tratado como string para facilitar os filtros
     df_completo['Ano'] = df_completo['Ano'].astype(str)
     return df_completo
 
@@ -95,7 +93,7 @@ if not st.session_state.logged_in:
     col_vazia1, col_login, col_vazia2 = st.columns([1, 2, 1])
     
     with col_login:
-        st.markdown("### Por favor, insira as suas credenciais")
+        st.markdown("### Por favor, insira suas credenciais")
         email_input = st.text_input("E-mail corporativo")
         senha_input = st.text_input("Senha", type="password")
         
@@ -107,12 +105,8 @@ if not st.session_state.logged_in:
                 st.rerun() 
             else:
                 try:
-                    # Tenta ler a base mestre para ver os acessos. Se falhar, procura o ficheiro isolado
-                    try:
-                        df_users_login = pd.read_csv(f"{BASE_URL}dados_consolidados_master.csv")
-                    except Exception:
-                        df_users_login = pd.read_csv(f"{BASE_URL}dados_usuarios.csv")
-                        
+                    # Lê a lista oficial de usuários editável para validar
+                    df_users_login = pd.read_csv(f"{BASE_URL}dados_usuarios.csv")
                     lista_emails = df_users_login['E-mail'].dropna().tolist()
                     
                     if email_input in lista_emails and senha_input == SENHA_PADRAO_AGENTE:
@@ -125,7 +119,7 @@ if not st.session_state.logged_in:
                     else:
                         st.error("E-mail não encontrado ou senha incorreta.")
                 except Exception:
-                    st.warning("Base de acessos indisponível. Apenas o Gestor pode aceder para realizar a primeira configuração.")
+                    st.warning("Base de usuários indisponível. Apenas o Gestor pode acessar para realizar a primeira configuração.")
 
 # ==========================================
 # SISTEMA LOGADO
@@ -145,15 +139,14 @@ else:
         
     st.sidebar.markdown("---")
 
-    # --- CARREGAR DADOS ---
+    # --- CARREGAR DADOS DO DASHBOARD ---
     try:
         df_completo = carregar_dados_mestre()
-        # Filtra os dados em memória de acordo com o mês/ano selecionado na barra lateral
         df_periodo = df_completo[(df_completo['Mês'] == mes_view) & (df_completo['Ano'] == str(ano_view))]
         
         if df_periodo.empty:
             dados_carregados = False
-            erro_dados = f"Ainda não existem registos para {mes_view} de {ano_view}."
+            erro_dados = f"Ainda não existem registros para {mes_view} de {ano_view}."
         else:
             dados_carregados = True
     except urllib.error.HTTPError:
@@ -167,19 +160,52 @@ else:
     # VISÃO DO GESTOR
     # ==========================================
     if st.session_state.perfil == "Gestor":
-        aba_dashboard, aba_upload = st.tabs(["📊 Dashboard de Indicadores", "⚙️ Consolidação e Envio"])
+        aba_dashboard, aba_upload, aba_equipe = st.tabs(["📊 Dashboard de Indicadores", "⚙️ Consolidação (Mensal)", "👥 Gestão da Equipe"])
         
-        # ABA: ADMINISTRAÇÃO E CONSOLIDAÇÃO
+        # ABA 1: GESTÃO DA EQUIPE (NOVIDADE)
+        with aba_equipe:
+            st.header("👥 Gestão de Usuários e Acessos")
+            st.markdown("Adicione, edite ou remova membros da equipe diretamente na tabela abaixo. **Não esqueça de clicar em Salvar** após realizar alterações.")
+            
+            try:
+                # Lê a base atual do GitHub
+                df_users_atual = pd.read_csv(f"{BASE_URL}dados_usuarios.csv")
+                
+                # Exibe a planilha editável (num_rows="dynamic" permite adicionar e deletar linhas)
+                df_users_editado = st.data_editor(df_users_atual, num_rows="dynamic", use_container_width=True)
+                
+                if st.button("💾 Salvar Alterações da Equipe no GitHub", type="primary"):
+                    with st.spinner("Salvando as alterações no GitHub..."):
+                        # Converte os dados da tela para CSV em texto
+                        csv_usr = df_users_editado.to_csv(index=False)
+                        suc, msg = enviar_para_github("dados_usuarios.csv", csv_usr)
+                        if suc:
+                            st.success("Lista de usuários atualizada com sucesso! Eles já podem fazer login.")
+                        else:
+                            st.error(msg)
+                            
+            except urllib.error.HTTPError:
+                # Se o arquivo não existir ainda (primeiro uso do sistema)
+                st.warning("O arquivo de usuários ainda não existe. Faça o upload do arquivo base para criá-lo.")
+                up_us_inicial = st.file_uploader("Upload inicial de Usuários (CSV)", type=["csv"])
+                if up_us_inicial and st.button("Criar Base Inicial"):
+                    suc, msg = enviar_para_github("dados_usuarios.csv", up_us_inicial)
+                    if suc:
+                        st.success("Criado com sucesso! Atualize a página para visualizar a tabela editável.")
+                    else:
+                        st.error(msg)
+
+        # ABA 2: ADMINISTRAÇÃO E CONSOLIDAÇÃO
         with aba_upload:
             st.header("⚙️ Atualizar Base Histórica (Master)")
             
-            st.info("👇 **Passo 1:** Indique qual Mês/Ano estes ficheiros representam.")
+            st.info("👇 **Passo 1:** Indique qual Mês/Ano estes arquivos representam.")
             col_m, col_a = st.columns(2)
             mes_up = col_m.selectbox("Mês dos dados:", MESES)
             ano_up = col_a.selectbox("Ano dos dados:", ANOS)
             
             st.markdown("---")
-            st.write("👇 **Passo 2:** Envie os relatórios atuais nas caixas abaixo.")
+            st.write("👇 **Passo 2:** Envie os **5 relatórios operacionais** nas caixas abaixo.")
             
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -190,31 +216,33 @@ else:
                 up_vz = st.file_uploader("4. Voz", type=["csv"])
             with c3:
                 up_rt = st.file_uploader("5. Retenção", type=["csv"])
-                up_us = st.file_uploader("6. Lista de Utilizadores", type=["csv"])
+                # Removemos a caixa de upload de usuários daqui!
                 
             st.markdown("---")
             
             # BOTÃO ÚNICO DE PROCESSAMENTO
             if st.button("🚀 Processar e Atualizar Base Mestre", type="primary", use_container_width=True):
-                if up_ad and up_pq and up_ch and up_vz and up_rt and up_us:
-                    with st.spinner(f"A atualizar base com os dados de {mes_up}/{ano_up}... Aguarde!"):
+                if up_ad and up_pq and up_ch and up_vz and up_rt:
+                    with st.spinner(f"Atualizando base com os dados de {mes_up}/{ano_up}... Aguarde!"):
                         try:
-                            # 1. Lê ficheiros atuais
+                            # 1. Lê os 5 arquivos operacionais da tela
                             df_perf = pd.read_csv(up_ad)
                             df_ret = pd.read_csv(up_rt)
-                            df_users = pd.read_csv(up_us)
                             df_chat = pd.read_csv(up_ch)
                             df_voz = pd.read_csv(up_vz)
                             df_pesq = pd.read_csv(up_pq)
                             
-                            # 2. Tratamentos
+                            # 2. Lê a lista de usuários diretamente do GitHub (A que você edita na outra aba)
+                            df_users = pd.read_csv(f"{BASE_URL}dados_usuarios.csv")
+                            
+                            # 3. Tratamentos
                             df_perf['Aderência (%)'] = df_perf['Aderência (%)'].apply(limpar_porcentagem)
                             df_perf['Conformidade (%)'] = df_perf['Conformidade (%)'].apply(limpar_porcentagem)
                             df_perf['Chave_Nome'] = df_perf['Agente'].astype(str).str.strip().str.upper()
                             df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
                             df_users['Chave_Nome'] = df_users['Nome'].astype(str).str.strip().str.upper()
                             
-                            # 3. Agrupamentos
+                            # 4. Agrupamentos
                             df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
                             df_chat_agg = df_chat.groupby('Chave_Nome').agg({'Atendidas': 'sum', 'Tratamento médio': 'mean', 'Espera média': 'mean'}).reset_index()
                             df_chat_agg.rename(columns={'Atendidas': 'Vol. Chat', 'Tratamento médio': 'TMA Chat (ms)', 'Espera média': 'TME Chat (ms)'}, inplace=True)
@@ -231,7 +259,7 @@ else:
                             df_pesq['CSAT'] = pd.to_numeric(df_pesq['CSAT'], errors='coerce')
                             df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(CSAT_Media=('CSAT', 'mean'), IR_Percentual=('IR', calcular_ir)).reset_index()
 
-                            # 4. Cruzamento do Mês
+                            # 5. Cruzamento do Mês
                             df_novo = pd.merge(df_users, df_perf, on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_ret, on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_chat_agg, on='Chave_Nome', how='left')
@@ -239,39 +267,34 @@ else:
                             df_novo = pd.merge(df_novo, df_pesq_agg, on='Chave_Nome', how='left')
                             df_novo['Nome Exibição'] = df_novo['Chave_Nome'].str.title()
                             
-                            # Adiciona as colunas de identificação de período
                             df_novo['Mês'] = mes_up
                             df_novo['Ano'] = str(ano_up)
                             
-                            # 5. Lógica de INCREMENTO DA BASE MESTRE
+                            # 6. INCREMENTO DA BASE MESTRE
                             url_master = f"{BASE_URL}dados_consolidados_master.csv"
                             try:
                                 df_master = pd.read_csv(url_master)
                                 df_master['Ano'] = df_master['Ano'].astype(str)
-                                # Remove os dados antigos do mesmo mês/ano para não duplicar se você estiver atualizando o mesmo dia/mês
                                 df_master = df_master[~((df_master['Mês'] == mes_up) & (df_master['Ano'] == str(ano_up)))]
-                                # Junta tudo (dados passados + novos dados deste mês)
                                 df_final = pd.concat([df_master, df_novo], ignore_index=True)
                             except Exception:
-                                # Se a base mestre não existe (primeiro upload de sempre), ela será igual à nova
                                 df_final = df_novo
                             
-                            # 6. Guardar no GitHub
+                            # 7. Guardar no GitHub
                             csv_final = df_final.to_csv(index=False)
                             suc_mega, msg_mega = enviar_para_github("dados_consolidados_master.csv", csv_final)
-                            enviar_para_github("dados_usuarios.csv", up_us) # Backup dos utilizadores
                             
                             if suc_mega:
                                 st.success(f"Tudo pronto! Base Mestre atualizada com sucesso para o período {mes_up}/{ano_up}.")
                             else:
-                                st.warning("Houve um erro ao atualizar o repositório. Verifique as suas credenciais.")
+                                st.warning("Houve um erro ao atualizar o repositório. Verifique suas credenciais.")
                                 
                         except Exception as e:
                             st.error(f"Erro durante o processamento dos dados: {e}")
                 else:
-                    st.error("⚠️ Estão a faltar ficheiros! Por favor, coloque os 6 relatórios nas caixas.")
+                    st.error("⚠️ Faltam arquivos! Por favor, coloque os 5 relatórios nas caixas.")
                     
-        # ABA: DASHBOARD GESTOR
+        # ABA 3: DASHBOARD GESTOR
         with aba_dashboard:
             if not dados_carregados:
                 st.warning(f"⚠️ {erro_dados}")
@@ -303,7 +326,7 @@ else:
         if not dados_carregados:
             st.warning(f"⚠️ {erro_dados}")
         else:
-            st.title(f"👤 O Meu Painel ({mes_view}/{ano_view})")
+            st.title(f"👤 Meu Painel ({mes_view}/{ano_view})")
             
             meus_dados = df_periodo[df_periodo['E-mail'] == st.session_state.user_email]
             
@@ -334,6 +357,6 @@ else:
                 cr1, cr2, cr3 = st.columns(3)
                 cr1.metric("Volume Tratado", int(rt_geral) if pd.notna(rt_geral) else 0)
                 cr2.metric("Volume Retido", int(rt_valido) if pd.notna(rt_valido) else 0)
-                cr3.metric("A Minha Taxa", f"{minha_tx_ret:.2f}%")
+                cr3.metric("Minha Taxa", f"{minha_tx_ret:.2f}%")
             else:
-                st.info("Ainda não tem métricas registadas para si neste período. Vá acompanhando as próximas atualizações!")
+                st.info("Ainda não tem métricas registradas para você neste período. Vá acompanhando as próximas atualizações!")
