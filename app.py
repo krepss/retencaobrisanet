@@ -254,16 +254,10 @@ else:
                             df_perf['Chave_Nome'] = df_perf['Agente'].astype(str).str.strip().str.upper()
                             df_users['Chave_Nome'] = df_users['Nome'].astype(str).str.strip().str.upper()
                             
-                            # --- REGRA DE HISTÓRICO DE RETENÇÃO ---
+                            # --- CAPTURA DIRETA DOS DADOS CONFORME A SUA PLANILHA ---
                             df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
-                            df_ret['% de retenção'] = df_ret['% de retenção'].apply(limpar_porcentagem)
+                            df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                             df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
-                            
-                            # Engenharia reversa para achar o volume total tratado
-                            df_ret['RT geral calculado'] = df_ret.apply(
-                                lambda row: (row['RT geral valido'] / (row['% de retenção'] / 100)) if row['% de retenção'] > 0 else row['RT geral valido'],
-                                axis=1
-                            ).fillna(0)
                             
                             df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
                             df_chat_agg = df_chat.groupby('Chave_Nome').agg({'Atendidas': 'sum', 'Tratamento médio': 'mean', 'Espera média': 'mean'}).reset_index()
@@ -288,10 +282,7 @@ else:
                             ).reset_index()
 
                             df_novo = pd.merge(df_users, df_perf, on='Chave_Nome', how='left')
-                            df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculated']], on='Chave_Nome', how='left') if 'RT geral calculated' in df_ret.columns else pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculado' if 'RT geral calculated' in df_ret.columns else 'RT geral calculado']], on='Chave_Nome', how='left')
-                            # Forçando a junção das colunas de retenção corretas
-                            df_novo = pd.merge(df_users, df_perf, on='Chave_Nome', how='left')
-                            df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculado']], on='Chave_Nome', how='left')
+                            df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'Taxa_Retencao_Original']], on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_chat_agg, on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_voz_agg, on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_pesq_agg, on='Chave_Nome', how='left')
@@ -313,13 +304,13 @@ else:
                             
                             if suc_mega:
                                 st.cache_data.clear()
-                                st.success(f"Sucesso! Base Mestre atualizada para {mes_up}/{ano_up}.")
+                                st.success(f"Sucesso! Base Mestre alinhada com as porcentagens oficiais para {mes_up}/{ano_up}.")
                                 time.sleep(0.5)
                                 st.rerun()
                             else:
-                                st.warning("Erro ao salvar o arquivo consolidado no GitHub.")
+                                st.warning("Erro ao salvar no GitHub.")
                         except Exception as e:
-                            st.error(f"Erro no processamento técnico dos dados: {e}")
+                            st.error(f"Erro no processamento técnico: {e}")
                 else:
                     st.error("⚠️ Por favor, adicione todos os 5 relatórios obrigatórios.")
                     
@@ -328,7 +319,7 @@ else:
             if not base_mestre_existe:
                 st.info("👋 **Bem-vindo ao Sistema!**")
                 st.warning("📢 A base mestre ainda não foi integrada ou o ficheiro está inacessível.")
-                st.markdown("💡 **Como inicializar:** Vá à aba **'⚙️ Consolidação (Mensal)'**, anexe os seus 5 relatórios atuais de Maio e clique em **'🚀 Processar e Atualizar Base Mestre'**.")
+                st.markdown("💡 **Como inicializar:** Vá à aba **'⚙️ Consolidação (Mensal)'**, anexe os seus 5 relatórios e processe.")
             elif not dados_carregados:
                 st.warning(f"⚠️ {erro_dados}")
             else:
@@ -339,9 +330,8 @@ else:
                 
                 df_view = df_periodo[df_periodo['Nome Exibição'] == filtro_agente] if filtro_agente != "Todos" else df_periodo.copy()
 
-                # Verificadores de integridade de colunas antigas vs novas
                 tem_colunas_novas = 'Total_Pesq_CSAT' in df_view.columns
-                tem_coluna_retencao_calculada = 'RT geral calculado' in df_view.columns
+                tem_coluna_ret_original = 'Taxa_Retencao_Original' in df_view.columns
                 
                 if tem_colunas_novas:
                     pesquisas_csat_totais = df_view['Total_Pesq_CSAT'].sum()
@@ -356,22 +346,21 @@ else:
                 else:
                     v_csat = df_view['CSAT_Media'].mean() if 'CSAT_Media' in df_view.columns else 0.0
                     v_ir = df_view['IR_Percentual'].mean() if 'IR_Percentual' in df_view.columns else 0.0
-                    sub_legenda_csat = "⚠️ Faça re-upload técnico"
-                    sub_legenda_ir = "⚠️ Faça re-upload técnico"
+                    sub_legenda_csat = "⚠️ Re-upload pendente"
+                    sub_legenda_ir = "⚠️ Re-upload pendente"
 
                 v_ade = df_view['Aderência (%)'].mean()
                 v_conf = df_view['Conformidade (%)'].mean()
                 
-                # Cálculo da taxa de retenção ponderada
-                if tem_coluna_retencao_calculada:
-                    total_rt_geral = df_view['RT geral calculado'].sum()
-                    total_rt_valido = df_view['RT geral valido'].sum()
-                    v_retencao = (total_rt_valido / total_rt_geral * 100) if total_rt_geral > 0 else 0.0
-                    sub_legenda_ret = f"Total: {int(total_rt_valido)} retidos de {int(total_rt_geral)} tratados"
+                # --- CORREÇÃO DA RETENÇÃO COM BASE NO SEU FORMATO ---
+                total_rt_valido = df_view['RT geral valido'].sum() if 'RT geral valido' in df_view.columns else 0
+                if col_m.selectbox and tem_coluna_ret_original:
+                    # Traz a média exata das porcentagens oficiais geradas pelo seu CRM
+                    v_retencao = df_view['Taxa_Retencao_Original'].mean()
+                    sub_legenda_ret = f"Total Acumulado: {int(total_rt_valido)} retidos válidos"
                 else:
-                    total_rt_valido = df_view['RT geral valido'].sum() if 'RT geral valido' in df_view.columns else 0
                     v_retencao = 0.0
-                    sub_legenda_ret = "⚠️ Processe a nova planilha"
+                    sub_legenda_ret = "⚠️ Atualize a planilha na aba ao lado"
                 
                 total_vol_chat = df_view['Vol. Chat'].sum()
                 tma_chat_medio = df_view['TMA Chat (Min)'].mean()
@@ -387,7 +376,7 @@ else:
                 with c2:
                     st.markdown(f"<div class='kpi-card'><div class='kpi-title'>🎯 Índice IR</div><div class='kpi-value'>{v_ir:.1f}%</div><div style='font-size:11px;color:#6c757d;'>{sub_legenda_ir}</div></div>", unsafe_allow_html=True)
                 with c3:
-                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>📈 Taxa Retenção</div><div class='kpi-value'>{v_retencao:.1f}%</div><div style='font-size:11px;color:#6c757d;'>{sub_legenda_ret}</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>📈 Taxa Retenção</div><div class='kpi-value'>{v_retencao:.2f}%</div><div style='font-size:11px;color:#6c757d;'>{sub_legenda_ret}</div></div>", unsafe_allow_html=True)
                 with c4:
                     st.markdown(f"<div class='kpi-card'><div class='kpi-title'>⏱️ Aderência</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#28a745;'>Média Equipe</div></div>", unsafe_allow_html=True)
                 with c5:
@@ -408,10 +397,10 @@ else:
 
                 st.markdown("---")
                 
-                # TABELA COMPLETA CORRIGIDA (MUDANÇA AQUI: 'RT geral calculado')
+                # TABELA DETALHADA POR AGENTE
                 st.subheader("👥 Visão Detalhada por Agente")
-                
                 df_tabela = df_view.copy()
+                
                 if tem_colunas_novas:
                     df_tabela['CSAT_Agente (%)'] = (df_tabela['Boas_Pesq_CSAT'] / df_tabela['Total_Pesq_CSAT'] * 100).fillna(0)
                     df_tabela['IR_Agente (%)'] = (df_tabela['Sim_Pesq_IR'] / df_tabela['Total_Pesq_IR'] * 100).fillna(0)
@@ -419,10 +408,7 @@ else:
                     df_tabela['CSAT_Agente (%)'] = df_tabela['CSAT_Media'].fillna(0)
                     df_tabela['IR_Agente (%)'] = df_tabela['IR_Percentual'].fillna(0)
                     
-                if tem_coluna_retencao_calculada:
-                    df_tabela['% Retenção'] = (df_tabela['RT geral valido'] / df_tabela['RT geral calculado'] * 100).fillna(0)
-                else:
-                    df_tabela['% Retenção'] = 0.0
+                df_tabela['% Retenção'] = df_tabela['Taxa_Retencao_Original'].fillna(0) if tem_coluna_ret_original else 0.0
                 
                 colunas_tabela = ['Nome Exibição', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Aderência (%)', 'Conformidade (%)', 'Vol. Chat', 'TMA Chat (Min)', 'Vol. Voz', 'TMA Voz (Min)', 'RT geral valido', '% Retenção']
                 
@@ -431,7 +417,7 @@ else:
                     'IR_Agente (%)': '{:.1f}%', 
                     'Aderência (%)': '{:.1f}%', 
                     'Conformidade (%)': '{:.1f}%', 
-                    '% Retenção': '{:.1f}%', 
+                    '% Retenção': '{:.2f}%', 
                     'Vol. Chat': '{:,.0f}',
                     'TMA Chat (Min)': '{:.1f}m', 
                     'Vol. Voz': '{:,.0f}',
@@ -444,7 +430,7 @@ else:
     # ==========================================
     elif st.session_state.perfil == "Agente":
         if not base_mestre_existe:
-            st.error("⚠️ O sistema está sendo configurado e inicializado pelo Gestor. Tente mais tarde.")
+            st.error("⚠️ O sistema está sendo configurado. Tente mais tarde.")
         elif not dados_carregados:
             st.warning(f"⚠️ {erro_dados}")
         else:
@@ -455,7 +441,7 @@ else:
                 dados = meus_dados.iloc[0]
                 
                 tem_colunas_novas = 'Total_Pesq_CSAT' in df_periodo.columns
-                tem_coluna_retencao_calculada = 'RT geral calculado' in df_periodo.columns
+                tem_coluna_ret_original = 'Taxa_Retencao_Original' in df_periodo.columns
                 
                 if tem_colunas_novas:
                     my_csat = (dados['Boas_Pesq_CSAT'] / dados['Total_Pesq_CSAT'] * 100) if dados['Total_Pesq_CSAT'] > 0 else 0.0
@@ -465,15 +451,10 @@ else:
                 else:
                     my_csat = dados['CSAT_Media'] if 'CSAT_Media' in df_periodo.columns else 0.0
                     my_ir = dados['IR_Percentual'] if 'IR_Percentual' in df_periodo.columns else 0.0
-                    sub_ag_csat = "Re-upload pendente"
-                    sub_ag_ir = "Re-upload pendente"
+                    sub_ag_csat = "Pendente"
+                    sub_ag_ir = "Pendente"
                     
-                if tem_coluna_retencao_calculada:
-                    my_tx_ret = (dados['RT geral valido'] / dados['RT geral calculado'] * 100) if dados['RT geral calculado'] > 0 else 0.0
-                    total_tratado_agente = int(dados['RT geral calculado'])
-                else:
-                    my_tx_ret = 0.0
-                    total_tratado_agente = 0
+                my_tx_ret = dados['Taxa_Retencao_Original'] if tem_coluna_ret_original else 0.0
                 
                 st.markdown("### ⭐ Minha Performance")
                 ca1, ca2, ca3, ca4 = st.columns(4)
@@ -495,6 +476,6 @@ else:
                 with co3:
                     st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
                 with co4:
-                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Retidos: {int(dados['RT geral valido'])} de {total_tratado_agente}</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;'>Retidos Válidos: {int(dados['RT geral valido'])}</div></div>", unsafe_allow_html=True)
             else:
                 st.info("Nenhum dado operacional associado ao seu perfil para o mês selecionado.")
