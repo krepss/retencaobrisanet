@@ -14,14 +14,14 @@ GESTOR_EMAIL = "admin@brisanet.com.br"
 GESTOR_SENHA = "admin"
 SENHA_PADRAO_AGENTE = "1234" 
 
-# IMPORTANTE: SUBSTITUA PELOS SEUS DADOS DO GITHUB
+# IMPORTANTE: SUBSTITUA PELOS SEUS DADOS REAIS DO GITHUB
 BASE_URL = "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/"
 
 MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
 ANOS = ["2026", "2027", "2028", "2029", "2030"]
 
 # ==========================================
-# GESTÃO DE SESSÃO (MEMÓRIA DE LOGIN)
+# GESTÃO DE SESSÃO (MEMÓRIA DE LOGIN NATIVA)
 # ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -75,7 +75,6 @@ def enviar_para_github(nome_arquivo_git, conteudo):
     except Exception as e:
         return False, f"Erro no GitHub: {e}"
 
-# O Cache agora dura apenas 10 segundos, forçando o Streamlit a buscar os novos dados salvos quase na hora!
 @st.cache_data(ttl=10)
 def carregar_dados_mestre():
     url_dados = f"{BASE_URL}dados_consolidados_master.csv"
@@ -101,6 +100,8 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.perfil = "Gestor"
                 st.session_state.user_nome = "Gestor"
+                st.success("Login efetuado com sucesso!")
+                time.sleep(0.5)
                 st.rerun() 
             else:
                 try:
@@ -113,11 +114,13 @@ if not st.session_state.logged_in:
                         st.session_state.perfil = "Agente"
                         st.session_state.user_email = email_input.strip()
                         st.session_state.user_nome = str(nome_operador).title()
+                        st.success("Login efetuado com sucesso!")
+                        time.sleep(0.5)
                         st.rerun()
                     else:
                         st.error("E-mail não encontrado ou senha incorreta.")
                 except Exception:
-                    st.warning("Sistema inicializando. Se você for o Gestor, acesse com a conta Master administrativa para realizar a primeira configuração.")
+                    st.warning("Sistema inicializando. Se for o Gestor, aceda com o utilizador administrativo master para enviar os ficheiros iniciais.")
 
 # ==========================================
 # SISTEMA LOGADO
@@ -147,7 +150,7 @@ else:
         
         if df_periodo.empty:
             dados_carregados = False
-            erro_dados = f"Ainda não existem registros consolidados para {mes_view} de {ano_view}."
+            erro_dados = f"Ainda não existem registos consolidados para {mes_view} de {ano_view}."
         else:
             dados_carregados = True
             
@@ -261,10 +264,12 @@ else:
                             suc_mega, msg_mega = enviar_para_github("dados_consolidados_master.csv", csv_final)
                             
                             if suc_mega:
-                                st.cache_data.clear() # LIMPA O CACHE OBRIGATORIAMENTE AQUI!
+                                st.cache_data.clear()
                                 st.success(f"Sucesso! Base Mestre atualizada para {mes_up}/{ano_up}.")
                                 time.sleep(1)
                                 st.rerun()
+                            else:
+                                st.warning("Erro ao salvar o arquivo consolidado no GitHub.")
                         except Exception as e:
                             st.error(f"Erro no processamento técnico dos dados: {e}")
                 else:
@@ -275,7 +280,7 @@ else:
             if not base_mestre_existe:
                 st.info("👋 **Bem-vindo ao Sistema!**")
                 st.warning("📢 A base mestre ainda não foi criada no GitHub.")
-                st.markdown("💡 **Como inicializar:** Vá para a aba **'⚙️ Consolidação (Mensal)'**, selecione **Maio/2026**, anexe os seus 5 relatórios e clique em **'Processar e Atualizar Base Mestre'**.")
+                st.markdown("💡 **Como inicializar:** Vá para a aba **'⚙️ Consolidação (Mensal)'**, selecione **Maio**, anexe os seus 5 relatórios operacionais e clique em **'Processar e Atualizar Base Mestre'**.")
             elif not dados_carregados:
                 st.warning(f"⚠️ {erro_dados}")
             else:
