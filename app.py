@@ -4,7 +4,6 @@ import plotly.express as px
 from github import Github
 import urllib.error
 import time
-import extra_streamlit_components as stx
 
 # ==========================================
 # CONFIGURAÇÕES GERAIS E CREDENCIAIS
@@ -22,16 +21,8 @@ MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "A
 ANOS = ["2026", "2027", "2028", "2029", "2030"]
 
 # ==========================================
-# GESTOR DE COOKIES E SESSÃO
+# GESTÃO DE SESSÃO (MEMÓRIA DE LOGIN)
 # ==========================================
-cookie_manager = stx.CookieManager()
-
-if cookie_manager.get(cookie="logged_in") == "True":
-    st.session_state.logged_in = True
-    st.session_state.perfil = cookie_manager.get(cookie="perfil")
-    st.session_state.user_email = cookie_manager.get(cookie="user_email")
-    st.session_state.user_nome = cookie_manager.get(cookie="user_nome")
-
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.perfil = ""
@@ -43,12 +34,7 @@ def fazer_logout():
     st.session_state.perfil = ""
     st.session_state.user_email = ""
     st.session_state.user_nome = ""
-    cookie_manager.delete("logged_in")
-    cookie_manager.delete("perfil")
-    cookie_manager.delete("user_email")
-    cookie_manager.delete("user_nome")
-    st.cache_data.clear()
-    time.sleep(1)
+    st.cache_data.clear() 
 
 # ==========================================
 # FUNÇÕES DE TRATAMENTO E GITHUB
@@ -82,16 +68,15 @@ def enviar_para_github(nome_arquivo_git, conteudo):
         try:
             arquivo_existente = repo.get_contents(nome_arquivo_git)
             repo.update_file(arquivo_existente.path, f"Atualização via Streamlit: {nome_arquivo_git}", conteudo_final, arquivo_existente.sha)
-            st.cache_data.clear() 
             return True, f"{nome_arquivo_git} atualizado!"
         except Exception:
             repo.create_file(nome_arquivo_git, f"Criação via Streamlit: {nome_arquivo_git}", conteudo_final)
-            st.cache_data.clear()
             return True, f"{nome_arquivo_git} criado!"
     except Exception as e:
         return False, f"Erro no GitHub: {e}"
 
-@st.cache_data(ttl=60) # Diminuído para 1 minuto para atualizar quase instantaneamente
+# O Cache agora dura apenas 10 segundos, forçando o Streamlit a buscar os novos dados salvos quase na hora!
+@st.cache_data(ttl=10)
 def carregar_dados_mestre():
     url_dados = f"{BASE_URL}dados_consolidados_master.csv"
     df_completo = pd.read_csv(url_dados)
@@ -116,13 +101,6 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.perfil = "Gestor"
                 st.session_state.user_nome = "Gestor"
-                
-                cookie_manager.set("logged_in", "True")
-                cookie_manager.set("perfil", "Gestor")
-                cookie_manager.set("user_nome", "Gestor")
-                
-                st.success("Login efetuado com sucesso! Preparando ambiente...")
-                time.sleep(1.2)
                 st.rerun() 
             else:
                 try:
@@ -135,19 +113,11 @@ if not st.session_state.logged_in:
                         st.session_state.perfil = "Agente"
                         st.session_state.user_email = email_input.strip()
                         st.session_state.user_nome = str(nome_operador).title()
-                        
-                        cookie_manager.set("logged_in", "True")
-                        cookie_manager.set("perfil", "Agente")
-                        cookie_manager.set("user_email", email_input.strip())
-                        cookie_manager.set("user_nome", str(nome_operador).title())
-                        
-                        st.success("Login efetuado com sucesso! Preparando ambiente...")
-                        time.sleep(1.2)
                         st.rerun()
                     else:
                         st.error("E-mail não encontrado ou senha incorreta.")
                 except Exception:
-                    st.warning("Sistema inicializando. Se você for o Gestor, use as credenciais administrativas para realizar a primeira configuração.")
+                    st.warning("Sistema inicializando. Se você for o Gestor, acesse com a conta Master administrativa para realizar a primeira configuração.")
 
 # ==========================================
 # SISTEMA LOGADO
@@ -181,13 +151,9 @@ else:
         else:
             dados_carregados = True
             
-    except (urllib.error.HTTPError, FileNotFoundError, pd.errors.EmptyDataError):
-        # Captura caso o arquivo 'dados_consolidados_master.csv' não exista no Git
+    except Exception:
         base_mestre_existe = False
         dados_carregados = False
-    except Exception as e:
-        dados_carregados = False
-        erro_dados = str(e)
 
     # ==========================================
     # VISÃO DO GESTOR
@@ -198,8 +164,6 @@ else:
         # ABA 1: GESTÃO DA EQUIPE
         with aba_equipe:
             st.header("👥 Gestão de Usuários e Acessos")
-            st.markdown("Adicione, edite ou remova membros da equipe diretamente na tabela abaixo.")
-            
             try:
                 df_users_atual = pd.read_csv(f"{BASE_URL}dados_usuarios.csv")
                 df_users_editado = st.data_editor(df_users_atual, num_rows="dynamic", use_container_width=True)
@@ -209,32 +173,26 @@ else:
                         csv_usr = df_users_editado.to_csv(index=False)
                         suc, msg = enviar_para_github("dados_usuarios.csv", csv_usr)
                         if suc:
-                            st.success("Lista de usuários atualizada com sucesso! Eles já podem fazer login.")
+                            st.success("Lista de usuários atualizada com sucesso!")
                         else:
                             st.error(msg)
-                            
-            except (urllib.error.HTTPError, FileNotFoundError):
+            except Exception:
                 st.warning("O arquivo base de usuários ainda não existe no seu repositório Git.")
                 up_us_inicial = st.file_uploader("Upload inicial de Usuários (CSV)", type=["csv"])
                 if up_us_inicial and st.button("Criar Base Inicial de Usuários"):
                     suc, msg = enviar_para_github("dados_usuarios.csv", up_us_inicial)
                     if suc:
-                        st.success("Criado com sucesso! Atualize a página para visualizar a tabela editável.")
-                    else:
-                        st.error(msg)
+                        st.success("Criado com sucesso! Atualize a página.")
+                        st.rerun()
 
         # ABA 2: ADMINISTRAÇÃO E CONSOLIDAÇÃO
         with aba_upload:
             st.header("⚙️ Atualizar Base Histórica (Master)")
-            
-            st.info("👇 **Passo 1:** Indique qual Mês/Ano estes arquivos representam.")
             col_m, col_a = st.columns(2)
             mes_up = col_m.selectbox("Mês dos dados:", MESES)
             ano_up = col_a.selectbox("Ano dos dados:", ANOS)
             
             st.markdown("---")
-            st.write("👇 **Passo 2:** Envie os **5 relatórios operacionais** nas caixas abaixo.")
-            
             c1, c2, c3 = st.columns(3)
             with c1:
                 up_ad = st.file_uploader("1. Aderência", type=["csv"])
@@ -299,34 +257,27 @@ else:
                             except Exception:
                                 df_final = df_novo
                             
-                            # ... (código anterior de salvar no git)
                             csv_final = df_final.to_csv(index=False)
                             suc_mega, msg_mega = enviar_para_github("dados_consolidados_master.csv", csv_final)
                             
                             if suc_mega:
-                                # ISSO AQUI VAI FORÇAR O DASHBOARD A LER O ARQUIVO NOVO NA HORA:
-                                st.cache_data.clear() 
-                                
-                                st.success(f"Sucesso! Base Mestre inicializada/atualizada para o período de {mes_up}/{ano_up}.")
-                                time.sleep(1.5)
+                                st.cache_data.clear() # LIMPA O CACHE OBRIGATORIAMENTE AQUI!
+                                st.success(f"Sucesso! Base Mestre atualizada para {mes_up}/{ano_up}.")
+                                time.sleep(1)
                                 st.rerun()
-                            else:
-                                st.warning("Erro ao salvar o arquivo consolidado no GitHub.")
-                                
                         except Exception as e:
                             st.error(f"Erro no processamento técnico dos dados: {e}")
                 else:
-                    st.error("⚠️ Por favor, adicione todos os 5 relatórios obrigatórios antes de processar.")
+                    st.error("⚠️ Por favor, adicione todos os 5 relatórios obrigatórios.")
                     
         # ABA 3: DASHBOARD GESTOR
         with aba_dashboard:
             if not base_mestre_existe:
                 st.info("👋 **Bem-vindo ao Sistema!**")
                 st.warning("📢 A base mestre ainda não foi criada no GitHub.")
-                st.markdown("💡 **Como inicializar o sistema:** Vá para a aba **'⚙️ Consolidação (Mensal)'**, selecione o mês desejado, anexe os 5 relatórios e clique em **'Processar e Atualizar Base Mestre'**. Isso criará automaticamente o repositório integrado!")
+                st.markdown("💡 **Como inicializar:** Vá para a aba **'⚙️ Consolidação (Mensal)'**, selecione **Maio/2026**, anexe os seus 5 relatórios e clique em **'Processar e Atualizar Base Mestre'**.")
             elif not dados_carregados:
                 st.warning(f"⚠️ {erro_dados}")
-                st.info(f"Se desejar carregar dados para este período, utilize a aba de Consolidação Mensal.")
             else:
                 st.title(f"📈 Dashboard Operacional ({mes_view}/{ano_view})")
                 agentes = ["Todos"] + list(df_periodo['Nome Exibição'].dropna().unique())
@@ -349,11 +300,11 @@ else:
                 st.dataframe(df_tabela.style.format({'CSAT_Media': '{:.2f}', 'IR_Percentual': '{:.2f}%', 'Aderência (%)': '{:.2f}%', 'Conformidade (%)': '{:.2f}%', '% Retenção': '{:.2f}%', 'TMA Chat (Min)': '{:.1f}m', 'TMA Voz (Min)': '{:.1f}m'}), use_container_width=True)
 
     # ==========================================
-    # VISÃO DO AGENTE (INDIVIDUAL E DIRETA)
+    # VISÃO DO AGENTE
     # ==========================================
     elif st.session_state.perfil == "Agente":
         if not base_mestre_existe:
-            st.error("⚠️ O sistema está sendo configurado e inicializado pelo Gestor neste momento. Por favor, tente novamente mais tarde.")
+            st.error("⚠️ O sistema está sendo configurado e inicializado pelo Gestor. Tente mais tarde.")
         elif not dados_carregados:
             st.warning(f"⚠️ {erro_dados}")
         else:
@@ -362,7 +313,6 @@ else:
             
             if not meus_dados.empty:
                 dados = meus_dados.iloc[0]
-                
                 st.markdown("### ⭐ Satisfação e Qualidade")
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Minha Nota CSAT", f"{dados['CSAT_Media']:.2f}" if pd.notna(dados['CSAT_Media']) else "N/A")
