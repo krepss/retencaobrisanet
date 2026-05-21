@@ -254,13 +254,12 @@ else:
                             df_perf['Chave_Nome'] = df_perf['Agente'].astype(str).str.strip().str.upper()
                             df_users['Chave_Nome'] = df_users['Nome'].astype(str).str.strip().str.upper()
                             
-                            # --- NOVA REGRA DO HISTÓRICO DE RETENÇÃO ---
+                            # --- REGRA DE HISTÓRICO DE RETENÇÃO ---
                             df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
                             df_ret['% de retenção'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                             df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
                             
-                            # Faz a engenharia reversa matemática para descobrir o volume total (RT Geral)
-                            # Se a taxa for maior que zero, calcula. Se for zero, o total tratado também é zero.
+                            # Engenharia reversa para achar o volume total tratado
                             df_ret['RT geral calculado'] = df_ret.apply(
                                 lambda row: (row['RT geral valido'] / (row['% de retenção'] / 100)) if row['% de retenção'] > 0 else row['RT geral valido'],
                                 axis=1
@@ -289,6 +288,9 @@ else:
                             ).reset_index()
 
                             df_novo = pd.merge(df_users, df_perf, on='Chave_Nome', how='left')
+                            df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculated']], on='Chave_Nome', how='left') if 'RT geral calculated' in df_ret.columns else pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculado' if 'RT geral calculated' in df_ret.columns else 'RT geral calculado']], on='Chave_Nome', how='left')
+                            # Forçando a junção das colunas de retenção corretas
+                            df_novo = pd.merge(df_users, df_perf, on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculado']], on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_chat_agg, on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_voz_agg, on='Chave_Nome', how='left')
@@ -311,7 +313,7 @@ else:
                             
                             if suc_mega:
                                 st.cache_data.clear()
-                                st.success(f"Sucesso! Base Mestre atualizada para {mes_up}/{ano_up} utilizando o critério de '% de retenção'!")
+                                st.success(f"Sucesso! Base Mestre atualizada para {mes_up}/{ano_up}.")
                                 time.sleep(0.5)
                                 st.rerun()
                             else:
@@ -360,14 +362,13 @@ else:
                 v_ade = df_view['Aderência (%)'].mean()
                 v_conf = df_view['Conformidade (%)'].mean()
                 
-                # --- CÁLCULO DA TAXA DE RETENÇÃO PONDERADA ---
+                # Cálculo da taxa de retenção ponderada
                 if tem_coluna_retencao_calculada:
                     total_rt_geral = df_view['RT geral calculado'].sum()
                     total_rt_valido = df_view['RT geral valido'].sum()
                     v_retencao = (total_rt_valido / total_rt_geral * 100) if total_rt_geral > 0 else 0.0
                     sub_legenda_ret = f"Total: {int(total_rt_valido)} retidos de {int(total_rt_geral)} tratados"
                 else:
-                    # Fallback temporário de segurança
                     total_rt_valido = df_view['RT geral valido'].sum() if 'RT geral valido' in df_view.columns else 0
                     v_retencao = 0.0
                     sub_legenda_ret = "⚠️ Processe a nova planilha"
@@ -407,7 +408,7 @@ else:
 
                 st.markdown("---")
                 
-                # TABELA COMPLETA COM FORMATOS INDIVIDUAIS
+                # TABELA COMPLETA CORRIGIDA (MUDANÇA AQUI: 'RT geral calculado')
                 st.subheader("👥 Visão Detalhada por Agente")
                 
                 df_tabela = df_view.copy()
@@ -419,7 +420,7 @@ else:
                     df_tabela['IR_Agente (%)'] = df_tabela['IR_Percentual'].fillna(0)
                     
                 if tem_coluna_retencao_calculada:
-                    df_tabela['% Retenção'] = (df_tabela['RT geral valido'] / df_tabela['RT geral calculated'] * 100).fillna(0)
+                    df_tabela['% Retenção'] = (df_tabela['RT geral valido'] / df_tabela['RT geral calculado'] * 100).fillna(0)
                 else:
                     df_tabela['% Retenção'] = 0.0
                 
@@ -454,7 +455,7 @@ else:
                 dados = meus_dados.iloc[0]
                 
                 tem_colunas_novas = 'Total_Pesq_CSAT' in df_periodo.columns
-                tem_coluna_retencao_calculada = 'RT geral calculated' in df_periodo.columns
+                tem_coluna_retencao_calculada = 'RT geral calculado' in df_periodo.columns
                 
                 if tem_colunas_novas:
                     my_csat = (dados['Boas_Pesq_CSAT'] / dados['Total_Pesq_CSAT'] * 100) if dados['Total_Pesq_CSAT'] > 0 else 0.0
@@ -468,8 +469,8 @@ else:
                     sub_ag_ir = "Re-upload pendente"
                     
                 if tem_coluna_retencao_calculada:
-                    my_tx_ret = (dados['RT geral valido'] / dados['RT geral calculated'] * 100) if dados['RT geral calculated'] > 0 else 0.0
-                    total_tratado_agente = int(dados['RT geral calculated'])
+                    my_tx_ret = (dados['RT geral valido'] / dados['RT geral calculado'] * 100) if dados['RT geral calculado'] > 0 else 0.0
+                    total_tratado_agente = int(dados['RT geral calculado'])
                 else:
                     my_tx_ret = 0.0
                     total_tratado_agente = 0
