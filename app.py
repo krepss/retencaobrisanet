@@ -3,6 +3,8 @@ import pandas as pd
 import plotly.express as px
 from github import Github
 import urllib.error
+import time
+import extra_streamlit_components as stx
 
 # ==========================================
 # CONFIGURAÇÕES GERAIS E CREDENCIAIS
@@ -20,8 +22,18 @@ MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "A
 ANOS = ["2026", "2027", "2028", "2029", "2030"]
 
 # ==========================================
-# GESTÃO DE SESSÃO (MEMÓRIA DE LOGIN)
+# GESTOR DE COOKIES E SESSÃO
 # ==========================================
+# Inicializa o gestor de Cookies
+cookie_manager = stx.CookieManager()
+
+# Restaura a sessão a partir do Cookie se a página for atualizada (F5)
+if cookie_manager.get(cookie="logged_in") == "True":
+    st.session_state.logged_in = True
+    st.session_state.perfil = cookie_manager.get(cookie="perfil")
+    st.session_state.user_email = cookie_manager.get(cookie="user_email")
+    st.session_state.user_nome = cookie_manager.get(cookie="user_nome")
+
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.perfil = ""
@@ -33,7 +45,13 @@ def fazer_logout():
     st.session_state.perfil = ""
     st.session_state.user_email = ""
     st.session_state.user_nome = ""
-    st.cache_data.clear() 
+    # Apaga os cookies
+    cookie_manager.delete("logged_in")
+    cookie_manager.delete("perfil")
+    cookie_manager.delete("user_email")
+    cookie_manager.delete("user_nome")
+    st.cache_data.clear()
+    time.sleep(1) # Dá tempo ao navegador para apagar os cookies antes de atualizar
 
 # ==========================================
 # FUNÇÕES DE TRATAMENTO E GITHUB
@@ -59,7 +77,6 @@ def enviar_para_github(nome_arquivo_git, conteudo):
         g = Github(st.secrets["GITHUB_TOKEN"])
         repo = g.get_repo(st.secrets["GITHUB_REPO"])
         
-        # Verifica se é um upload de arquivo ou um texto processado pelo pandas (edição)
         if hasattr(conteudo, 'getvalue'):
             conteudo_final = conteudo.getvalue()
         else:
@@ -98,23 +115,40 @@ if not st.session_state.logged_in:
         senha_input = st.text_input("Senha", type="password")
         
         if st.button("Entrar", use_container_width=True):
-            if email_input == GESTOR_EMAIL and senha_input == GESTOR_SENHA:
+            # Validação anti-espaços e anti-maiúsculas
+            if email_input.strip().lower() == GESTOR_EMAIL.lower() and senha_input.strip() == GESTOR_SENHA:
                 st.session_state.logged_in = True
                 st.session_state.perfil = "Gestor"
                 st.session_state.user_nome = "Gestor"
+                
+                # Guarda nos cookies do navegador
+                cookie_manager.set("logged_in", "True")
+                cookie_manager.set("perfil", "Gestor")
+                cookie_manager.set("user_nome", "Gestor")
+                
+                st.success("Login efetuado com sucesso! A preparar ambiente...")
+                time.sleep(1.2) # Pausa rápida para o navegador gravar o cookie
                 st.rerun() 
             else:
                 try:
-                    # Lê a lista oficial de usuários editável para validar
                     df_users_login = pd.read_csv(f"{BASE_URL}dados_usuarios.csv")
                     lista_emails = df_users_login['E-mail'].dropna().tolist()
                     
-                    if email_input in lista_emails and senha_input == SENHA_PADRAO_AGENTE:
-                        nome_operador = df_users_login[df_users_login['E-mail'] == email_input].iloc[0]['Nome']
+                    if email_input.strip() in lista_emails and senha_input.strip() == SENHA_PADRAO_AGENTE:
+                        nome_operador = df_users_login[df_users_login['E-mail'] == email_input.strip()].iloc[0]['Nome']
                         st.session_state.logged_in = True
                         st.session_state.perfil = "Agente"
-                        st.session_state.user_email = email_input
+                        st.session_state.user_email = email_input.strip()
                         st.session_state.user_nome = str(nome_operador).title()
+                        
+                        # Guarda nos cookies
+                        cookie_manager.set("logged_in", "True")
+                        cookie_manager.set("perfil", "Agente")
+                        cookie_manager.set("user_email", email_input.strip())
+                        cookie_manager.set("user_nome", str(nome_operador).title())
+                        
+                        st.success("Login efetuado com sucesso! A preparar ambiente...")
+                        time.sleep(1.2)
                         st.rerun()
                     else:
                         st.error("E-mail não encontrado ou senha incorreta.")
@@ -162,21 +196,17 @@ else:
     if st.session_state.perfil == "Gestor":
         aba_dashboard, aba_upload, aba_equipe = st.tabs(["📊 Dashboard de Indicadores", "⚙️ Consolidação (Mensal)", "👥 Gestão da Equipe"])
         
-        # ABA 1: GESTÃO DA EQUIPE (NOVIDADE)
+        # ABA 1: GESTÃO DA EQUIPE
         with aba_equipe:
             st.header("👥 Gestão de Usuários e Acessos")
             st.markdown("Adicione, edite ou remova membros da equipe diretamente na tabela abaixo. **Não esqueça de clicar em Salvar** após realizar alterações.")
             
             try:
-                # Lê a base atual do GitHub
                 df_users_atual = pd.read_csv(f"{BASE_URL}dados_usuarios.csv")
-                
-                # Exibe a planilha editável (num_rows="dynamic" permite adicionar e deletar linhas)
                 df_users_editado = st.data_editor(df_users_atual, num_rows="dynamic", use_container_width=True)
                 
                 if st.button("💾 Salvar Alterações da Equipe no GitHub", type="primary"):
                     with st.spinner("Salvando as alterações no GitHub..."):
-                        # Converte os dados da tela para CSV em texto
                         csv_usr = df_users_editado.to_csv(index=False)
                         suc, msg = enviar_para_github("dados_usuarios.csv", csv_usr)
                         if suc:
@@ -185,7 +215,6 @@ else:
                             st.error(msg)
                             
             except urllib.error.HTTPError:
-                # Se o arquivo não existir ainda (primeiro uso do sistema)
                 st.warning("O arquivo de usuários ainda não existe. Faça o upload do arquivo base para criá-lo.")
                 up_us_inicial = st.file_uploader("Upload inicial de Usuários (CSV)", type=["csv"])
                 if up_us_inicial and st.button("Criar Base Inicial"):
@@ -216,33 +245,26 @@ else:
                 up_vz = st.file_uploader("4. Voz", type=["csv"])
             with c3:
                 up_rt = st.file_uploader("5. Retenção", type=["csv"])
-                # Removemos a caixa de upload de usuários daqui!
                 
             st.markdown("---")
             
-            # BOTÃO ÚNICO DE PROCESSAMENTO
             if st.button("🚀 Processar e Atualizar Base Mestre", type="primary", use_container_width=True):
                 if up_ad and up_pq and up_ch and up_vz and up_rt:
                     with st.spinner(f"Atualizando base com os dados de {mes_up}/{ano_up}... Aguarde!"):
                         try:
-                            # 1. Lê os 5 arquivos operacionais da tela
                             df_perf = pd.read_csv(up_ad)
                             df_ret = pd.read_csv(up_rt)
                             df_chat = pd.read_csv(up_ch)
                             df_voz = pd.read_csv(up_vz)
                             df_pesq = pd.read_csv(up_pq)
-                            
-                            # 2. Lê a lista de usuários diretamente do GitHub (A que você edita na outra aba)
                             df_users = pd.read_csv(f"{BASE_URL}dados_usuarios.csv")
                             
-                            # 3. Tratamentos
                             df_perf['Aderência (%)'] = df_perf['Aderência (%)'].apply(limpar_porcentagem)
                             df_perf['Conformidade (%)'] = df_perf['Conformidade (%)'].apply(limpar_porcentagem)
                             df_perf['Chave_Nome'] = df_perf['Agente'].astype(str).str.strip().str.upper()
                             df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
                             df_users['Chave_Nome'] = df_users['Nome'].astype(str).str.strip().str.upper()
                             
-                            # 4. Agrupamentos
                             df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
                             df_chat_agg = df_chat.groupby('Chave_Nome').agg({'Atendidas': 'sum', 'Tratamento médio': 'mean', 'Espera média': 'mean'}).reset_index()
                             df_chat_agg.rename(columns={'Atendidas': 'Vol. Chat', 'Tratamento médio': 'TMA Chat (ms)', 'Espera média': 'TME Chat (ms)'}, inplace=True)
@@ -259,7 +281,6 @@ else:
                             df_pesq['CSAT'] = pd.to_numeric(df_pesq['CSAT'], errors='coerce')
                             df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(CSAT_Media=('CSAT', 'mean'), IR_Percentual=('IR', calcular_ir)).reset_index()
 
-                            # 5. Cruzamento do Mês
                             df_novo = pd.merge(df_users, df_perf, on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_ret, on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_chat_agg, on='Chave_Nome', how='left')
@@ -270,7 +291,6 @@ else:
                             df_novo['Mês'] = mes_up
                             df_novo['Ano'] = str(ano_up)
                             
-                            # 6. INCREMENTO DA BASE MESTRE
                             url_master = f"{BASE_URL}dados_consolidados_master.csv"
                             try:
                                 df_master = pd.read_csv(url_master)
@@ -280,7 +300,6 @@ else:
                             except Exception:
                                 df_final = df_novo
                             
-                            # 7. Guardar no GitHub
                             csv_final = df_final.to_csv(index=False)
                             suc_mega, msg_mega = enviar_para_github("dados_consolidados_master.csv", csv_final)
                             
