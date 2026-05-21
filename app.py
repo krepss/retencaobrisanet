@@ -91,36 +91,59 @@ if not st.session_state.logged_in:
     col_vazia1, col_login, col_vazia2 = st.columns([1, 2, 1])
     
     with col_login:
-        st.markdown("### Por favor, insira suas credenciais")
-        email_input = st.text_input("E-mail corporativo")
-        senha_input = st.text_input("Senha", type="password")
+        # O st.form garante que o sistema só processa após o clique ou tecla ENTER
+        with st.form("form_login"):
+            st.markdown("### Por favor, insira suas credenciais")
+            email_input = st.text_input("E-mail corporativo")
+            senha_input = st.text_input("Senha", type="password")
+            
+            submit_login = st.form_submit_button("Entrar", use_container_width=True)
         
-        if st.button("Entrar", use_container_width=True):
-            if email_input.strip().lower() == GESTOR_EMAIL.lower() and senha_input.strip() == GESTOR_SENHA:
+        if submit_login:
+            # Limpeza rigorosa para evitar falhas por espaços invisíveis
+            email_limpo = email_input.strip().lower()
+            senha_limpa = senha_input.strip()
+            
+            if email_limpo == GESTOR_EMAIL.lower() and senha_limpa == GESTOR_SENHA:
                 st.session_state.logged_in = True
                 st.session_state.perfil = "Gestor"
                 st.session_state.user_nome = "Gestor"
-                st.success("Login efetuado com sucesso!")
-                time.sleep(0.5)
-                st.rerun() 
+                st.success("Login de Gestor efetuado com sucesso!")
+                time.sleep(1)
+                
+                # Compatibilidade com qualquer versão do Streamlit
+                if hasattr(st, 'rerun'):
+                    st.rerun()
+                else:
+                    st.experimental_rerun()
             else:
                 try:
                     df_users_login = pd.read_csv(f"{BASE_URL}dados_usuarios.csv")
                     lista_emails = df_users_login['E-mail'].dropna().tolist()
                     
-                    if email_input.strip() in lista_emails and senha_input.strip() == SENHA_PADRAO_AGENTE:
-                        nome_operador = df_users_login[df_users_login['E-mail'] == email_input.strip()].iloc[0]['Nome']
+                    if email_limpo in lista_emails and senha_limpa == SENHA_PADRAO_AGENTE:
+                        nome_operador = df_users_login[df_users_login['E-mail'] == email_limpo].iloc[0]['Nome']
                         st.session_state.logged_in = True
                         st.session_state.perfil = "Agente"
-                        st.session_state.user_email = email_input.strip()
+                        st.session_state.user_email = email_limpo
                         st.session_state.user_nome = str(nome_operador).title()
-                        st.success("Login efetuado com sucesso!")
-                        time.sleep(0.5)
-                        st.rerun()
+                        st.success("Login de Agente efetuado com sucesso!")
+                        time.sleep(1)
+                        
+                        if hasattr(st, 'rerun'):
+                            st.rerun()
+                        else:
+                            st.experimental_rerun()
                     else:
-                        st.error("E-mail não encontrado ou senha incorreta.")
+                        st.error("❌ E-mail não encontrado ou senha incorreta.")
                 except Exception:
-                    st.warning("Sistema inicializando. Se for o Gestor, aceda com o utilizador administrativo master para enviar os ficheiros iniciais.")
+                    st.warning("⚠️ Sistema inicializando. A base de usuários não existe ainda.")
+                    st.info("Para o primeiro acesso, certifique-se de que está usando exatamente o e-mail: admin@brisanet.com.br e senha: admin")
+
+# ==========================================
+# SISTEMA LOGADO
+# ==========================================
+# (MANTENHA O RESTO DO SEU CÓDIGO A PARTIR DAQUI INTACTO)
 
 # ==========================================
 # SISTEMA LOGADO
