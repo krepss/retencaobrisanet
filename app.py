@@ -10,7 +10,7 @@ import time
 # ==========================================
 st.set_page_config(page_title="Sistema Operacional 360", page_icon="🎯", layout="wide")
 
-GESTOR_EMAIL = "gestor"
+GESTOR_EMAIL = "admin@brisanet.com.br"
 GESTOR_SENHA = "admin"
 SENHA_PADRAO_AGENTE = "1234" 
 
@@ -82,7 +82,7 @@ def enviar_para_github(nome_arquivo_git, conteudo):
         try:
             arquivo_existente = repo.get_contents(nome_arquivo_git)
             repo.update_file(arquivo_existente.path, f"Atualização via Streamlit: {nome_arquivo_git}", conteudo_final, arquivo_existente.sha)
-            return True, f"{nome_arquivo_git} atualizado!"
+            return True, f"{nome_arquivo_git} updated!"
         except Exception:
             repo.create_file(nome_arquivo_git, f"Criação via Streamlit: {nome_arquivo_git}", conteudo_final)
             return True, f"{nome_arquivo_git} criado!"
@@ -203,7 +203,7 @@ else:
                         csv_usr = df_users_editado.to_csv(index=False)
                         suc, msg = enviar_para_github("dados_usuarios.csv", csv_usr)
                         if suc:
-                            st.success("Lista de usuários updated!")
+                            st.success("Lista de usuários atualizada!")
                             st.cache_data.clear()
                         else:
                             st.error(msg)
@@ -267,11 +267,9 @@ else:
                             df_voz_agg['TMA Voz (Min)'] = df_voz_agg['TMA Voz (ms)'].apply(ms_para_minutos)
                             df_voz_agg['TME Voz (Min)'] = df_voz_agg['TME Voz (ms)'].apply(ms_para_minutos)
                             
-                            # --- NOVA INTELIGÊNCIA DE CONSOLIDAÇÃO POR PESQUISAS ---
                             df_pesq['Chave_Nome'] = df_pesq['Atendente'].astype(str).str.strip().str.upper()
                             df_pesq['CSAT_Num'] = pd.to_numeric(df_pesq['CSAT'], errors='coerce')
                             
-                            # Agrupamento guardando os totais absolutos para permitir médias ponderadas reais depois
                             df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(
                                 Total_Pesq_CSAT=('CSAT_Num', 'count'),
                                 Boas_Pesq_CSAT=('CSAT_Num', lambda x: (x >= 4).sum()),
@@ -302,7 +300,7 @@ else:
                             
                             if suc_mega:
                                 st.cache_data.clear()
-                                st.success(f"Sucesso! Base Mestre atualizada para {mes_up}/{ano_up}.")
+                                st.success(f"Sucesso! Base Mestre atualizada para {mes_up}/{ano_up}. O Dashboard foi desbloqueado!")
                                 time.sleep(0.5)
                                 st.rerun()
                             else:
@@ -317,9 +315,10 @@ else:
             if not base_mestre_existe:
                 st.info("👋 **Bem-vindo ao Sistema!**")
                 st.warning("📢 A base mestre ainda não foi integrada ou o ficheiro está inacessível.")
-                st.markdown("💡 **Como inicializar:** Vá à aba **'⚙️ Consolidação (Mensal)'**, anexe os seus 5 relatórios atuais de Maio e clique no botão de processar.")
+                st.markdown("💡 **Como inicializar:** Vá à aba **'⚙️ Consolidação (Mensal)'**, anexe os seus 5 relatórios atuais de Maio e clique em **'🚀 Processar e Atualizar Base Mestre'**.")
             elif not dados_carregados:
                 st.warning(f"⚠️ {erro_dados}")
+                st.info("💡 **Aviso Técnico:** Se você acabou de atualizar o código, vá na aba de Consolidação e processe os arquivos de Maio uma única vez para gerar a nova estrutura de colunas!")
             else:
                 st.title(f"📈 Dashboard Operacional ({mes_view}/{ano_view})")
                 
@@ -328,37 +327,46 @@ else:
                 
                 df_view = df_periodo[df_periodo['Nome Exibição'] == filtro_agente] if filtro_agente != "Todos" else df_periodo.copy()
 
-                # --- CÁLCULO PONDERADO REAL BASEADO NO NÚMERO DE PESQUISAS ---
-                pesquisas_csat_totais = df_view['Total_Pesq_CSAT'].sum()
-                pesquisas_csat_boas = df_view['Boas_Pesq_CSAT'].sum()
-                v_csat = (pesquisas_csat_boas / pesquisas_csat_totais * 100) if pesquisas_csat_totais > 0 else 0.0
+                # --- PROTEÇÃO CONTRA ARQUIVOS HISTÓRICOS ANTIGOS (FALLBACK) ---
+                tem_colunas_novas = 'Total_Pesq_CSAT' in df_view.columns
+                
+                if tem_colunas_novas:
+                    pesquisas_csat_totais = df_view['Total_Pesq_CSAT'].sum()
+                    pesquisas_csat_boas = df_view['Boas_Pesq_CSAT'].sum()
+                    v_csat = (pesquisas_csat_boas / pesquisas_csat_totais * 100) if pesquisas_csat_totais > 0 else 0.0
 
-                pesquisas_ir_totais = df_view['Total_Pesq_IR'].sum()
-                pesquisas_ir_sim = df_view['Sim_Pesq_IR'].sum()
-                v_ir = (pesquisas_ir_sim / pesquisas_ir_totais * 100) if pesquisas_ir_totais > 0 else 0.0
+                    pesquisas_ir_totais = df_view['Total_Pesq_IR'].sum()
+                    pesquisas_ir_sim = df_view['Sim_Pesq_IR'].sum()
+                    v_ir = (pesquisas_ir_sim / pesquisas_ir_totais * 100) if pesquisas_ir_totais > 0 else 0.0
+                    sub_legenda_csat = f"Base: {int(pesquisas_csat_totais)} pesq."
+                    sub_legenda_ir = f"Base: {int(pesquisas_ir_totais)} pesq."
+                else:
+                    # Fallback temporário de segurança (evita o crash se o arquivo do git for antigo)
+                    v_csat = df_view['CSAT_Media'].mean() if 'CSAT_Media' in df_view.columns else 0.0
+                    v_ir = df_view['IR_Percentual'].mean() if 'IR_Percentual' in df_view.columns else 0.0
+                    sub_legenda_csat = "⚠️ Faça re-upload para ver a base real"
+                    sub_legenda_ir = "⚠️ Faça re-upload para ver a base real"
 
                 v_ade = df_view['Aderência (%)'].mean()
                 v_conf = df_view['Conformidade (%)'].mean()
                 
-                # Retenção
                 total_rt_geral = df_view['RT geral'].sum()
                 total_rt_valido = df_view['RT geral valido'].sum()
                 v_retencao = (total_rt_valido / total_rt_geral * 100) if total_rt_geral > 0 else 0.0
                 
-                # Volumetrias e TMA
                 total_vol_chat = df_view['Vol. Chat'].sum()
                 tma_chat_medio = df_view['TMA Chat (Min)'].mean()
                 total_vol_voz = df_view['Vol. Voz'].sum()
                 tma_voz_medio = df_view['TMA Voz (Min)'].mean()
 
-                # === FILEIRA 1 DE CARDS (QUALIDADE E RETENÇÃO PONDERADOS) ===
+                # === FILEIRA 1 DE CARDS ===
                 st.subheader("🎯 Principais KPIs de Qualidade")
                 c1, c2, c3, c4, c5 = st.columns(5)
                 
                 with c1:
-                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>⭐ CSAT Global</div><div class='kpi-value'>{v_csat:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Base: {int(pesquisas_csat_totais)} pesq.</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>⭐ CSAT Ponderado</div><div class='kpi-value'>{v_csat:.1f}%</div><div style='font-size:11px;color:#6c757d;'>{sub_legenda_csat}</div></div>", unsafe_allow_html=True)
                 with c2:
-                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>🎯 Índice IR</div><div class='kpi-value'>{v_ir:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Base: {int(pesquisas_ir_totais)} pesq.</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>🎯 Índice IR</div><div class='kpi-value'>{v_ir:.1f}%</div><div style='font-size:11px;color:#6c757d;'>{sub_legenda_ir}</div></div>", unsafe_allow_html=True)
                 with c3:
                     st.markdown(f"<div class='kpi-card'><div class='kpi-title'>📈 Taxa Retenção</div><div class='kpi-value'>{v_retencao:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Total: {int(total_rt_geral)} tratados</div></div>", unsafe_allow_html=True)
                 with c4:
@@ -385,8 +393,13 @@ else:
                 st.subheader("👥 Visão Detalhada por Agente")
                 
                 df_tabela = df_view.copy()
-                df_tabela['CSAT_Agente (%)'] = (df_tabela['Boas_Pesq_CSAT'] / df_tabela['Total_Pesq_CSAT'] * 100).fillna(0)
-                df_tabela['IR_Agente (%)'] = (df_tabela['Sim_Pesq_IR'] / df_tabela['Total_Pesq_IR'] * 100).fillna(0)
+                if tem_colunas_novas:
+                    df_tabela['CSAT_Agente (%)'] = (df_tabela['Boas_Pesq_CSAT'] / df_tabela['Total_Pesq_CSAT'] * 100).fillna(0)
+                    df_tabela['IR_Agente (%)'] = (df_tabela['Sim_Pesq_IR'] / df_tabela['Total_Pesq_IR'] * 100).fillna(0)
+                else:
+                    df_tabela['CSAT_Agente (%)'] = df_tabela['CSAT_Media'].fillna(0) if 'CSAT_Media' in df_tabela.columns else 0
+                    df_tabela['IR_Agente (%)'] = df_tabela['IR_Percentual'].fillna(0) if 'IR_Percentual' in df_tabela.columns else 0
+                    
                 df_tabela['% Retenção'] = (df_tabela['RT geral valido'] / df_tabela['RT geral'] * 100).fillna(0)
                 
                 colunas_tabela = ['Nome Exibição', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Aderência (%)', 'Conformidade (%)', 'Vol. Chat', 'TMA Chat (Min)', 'Vol. Voz', 'TMA Voz (Min)', 'RT geral', 'RT geral valido']
@@ -419,15 +432,24 @@ else:
             if not meus_dados.empty:
                 dados = meus_dados.iloc[0]
                 
-                my_csat = (dados['Boas_Pesq_CSAT'] / dados['Total_Pesq_CSAT'] * 100) if dados['Total_Pesq_CSAT'] > 0 else 0.0
-                my_ir = (dados['Sim_Pesq_IR'] / dados['Total_Pesq_IR'] * 100) if dados['Total_Pesq_IR'] > 0 else 0.0
+                tem_colunas_novas = 'Total_Pesq_CSAT' in df_periodo.columns
+                if tem_colunas_novas:
+                    my_csat = (dados['Boas_Pesq_CSAT'] / dados['Total_Pesq_CSAT'] * 100) if dados['Total_Pesq_CSAT'] > 0 else 0.0
+                    my_ir = (dados['Sim_Pesq_IR'] / dados['Total_Pesq_IR'] * 100) if dados['Total_Pesq_IR'] > 0 else 0.0
+                    sub_ag_csat = f"{int(dados['Total_Pesq_CSAT'])} avaliações"
+                    sub_ag_ir = f"{int(dados['Total_Pesq_IR'])} pesquisas"
+                else:
+                    my_csat = dados['CSAT_Media'] if 'CSAT_Media' in df_periodo.columns else 0.0
+                    my_ir = dados['IR_Percentual'] if 'IR_Percentual' in df_periodo.columns else 0.0
+                    sub_ag_csat = "Re-upload pendente"
+                    sub_ag_ir = "Re-upload pendente"
                 
                 st.markdown("### ⭐ Minha Performance")
                 ca1, ca2, ca3, ca4 = st.columns(4)
                 with ca1:
-                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu CSAT</div><div class='kpi-value'>{my_csat:.1f}%</div><div style='font-size:11px;color:#6c757d;'>{int(dados['Total_Pesq_CSAT'])} avaliações</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu CSAT</div><div class='kpi-value'>{my_csat:.1f}%</div><div style='font-size:11px;color:#6c757d;'>{sub_ag_csat}</div></div>", unsafe_allow_html=True)
                 with ca2:
-                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu IR</div><div class='kpi-value'>{my_ir:.1f}%</div><div style='font-size:11px;color:#6c757d;'>{int(dados['Total_Pesq_IR'])} pesquisas</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu IR</div><div class='kpi-value'>{my_ir:.1f}%</div><div style='font-size:11px;color:#6c757d;'>{sub_ag_ir}</div></div>", unsafe_allow_html=True)
                 with ca3:
                     st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Minha Aderência</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div></div>", unsafe_allow_html=True)
                 with ca4:
