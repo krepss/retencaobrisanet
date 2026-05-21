@@ -91,7 +91,7 @@ def enviar_para_github(nome_arquivo_git, conteudo):
     except Exception as e:
         return False, f"Erro no GitHub: {e}"
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=60) # Diminuído para 1 minuto para atualizar quase instantaneamente
 def carregar_dados_mestre():
     url_dados = f"{BASE_URL}dados_consolidados_master.csv"
     df_completo = pd.read_csv(url_dados)
@@ -299,10 +299,14 @@ else:
                             except Exception:
                                 df_final = df_novo
                             
+                            # ... (código anterior de salvar no git)
                             csv_final = df_final.to_csv(index=False)
                             suc_mega, msg_mega = enviar_para_github("dados_consolidados_master.csv", csv_final)
                             
                             if suc_mega:
+                                # ISSO AQUI VAI FORÇAR O DASHBOARD A LER O ARQUIVO NOVO NA HORA:
+                                st.cache_data.clear() 
+                                
                                 st.success(f"Sucesso! Base Mestre inicializada/atualizada para o período de {mes_up}/{ano_up}.")
                                 time.sleep(1.5)
                                 st.rerun()
