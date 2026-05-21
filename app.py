@@ -17,6 +17,33 @@ SENHA_PADRAO_AGENTE = "1234"
 MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
 ANOS = ["2026", "2027", "2028", "2029", "2030"]
 
+# ESTILIZAÇÃO CSS PARA OS CARDS INJETADOS
+st.markdown("""
+    <style>
+        .kpi-card {
+            background-color: #f8f9fa;
+            border-left: 5px solid #007bff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.05);
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .kpi-title {
+            font-size: 14px;
+            color: #6c757d;
+            text-transform: uppercase;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .kpi-value {
+            font-size: 28px;
+            color: #212529;
+            font-weight: bold;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # ==========================================
 # GESTÃO DE SESSÃO NATIVA (MEMÓRIA DO STREAMLIT)
 # ==========================================
@@ -34,10 +61,9 @@ def fazer_logout():
     st.cache_data.clear() 
 
 # ==========================================
-# FUNÇÕES DE LEITURA E GRAVAÇÃO VIA API GITHUB (RESOLVE BLOQUEIOS DE REPO PRIVADO)
+# FUNÇÕES DE LEITURA E GRAVAÇÃO VIA API GITHUB
 # ==========================================
 def ler_csv_via_api_github(nome_arquivo):
-    """ Utiliza a API autenticada com o Token para ler repositórios Públicos ou Privados """
     g = Github(st.secrets["GITHUB_TOKEN"])
     repo = g.get_repo(st.secrets["GITHUB_REPO"])
     arquivo_git = repo.get_contents(nome_arquivo)
@@ -80,7 +106,7 @@ def ms_para_minutos(ms):
     if pd.isna(ms): return 0.0
     return ms / 1000 / 60
 
-@st.cache_data(ttl=5) # Cache super rápido para atualização em tempo real
+@st.cache_data(ttl=5)
 def carregar_dados_mestre_seguro():
     df = ler_csv_via_api_github("dados_consolidados_master.csv")
     df['Ano'] = df['Ano'].astype(str).str.strip()
@@ -140,7 +166,7 @@ else:
     st.sidebar.success(f"Logado como: **{st.session_state.user_nome}**")
     
     st.sidebar.markdown("### 📅 Filtro de Período")
-    mes_view = st.sidebar.selectbox("Selecione o Mês:", MESES, index=4) # Pré-seleciona "Maio"
+    mes_view = st.sidebar.selectbox("Selecione o Mês:", MESES, index=4) 
     ano_view = st.sidebar.selectbox("Selecione o Ano:", ANOS)
     
     if st.sidebar.button("🚪 Sair (Logout)", use_container_width=True):
@@ -149,7 +175,6 @@ else:
         
     st.sidebar.markdown("---")
 
-    # --- TENTATIVA DE LEITURA DA BASE MASTER VIA API ---
     base_mestre_existe = True
     erro_dados = ""
     
@@ -185,7 +210,7 @@ else:
                         csv_usr = df_users_editado.to_csv(index=False)
                         suc, msg = enviar_para_github("dados_usuarios.csv", csv_usr)
                         if suc:
-                            st.success("Lista de usuários atualizada com sucesso!")
+                            st.success("Lista de usuários updated!")
                             st.cache_data.clear()
                         else:
                             st.error(msg)
@@ -296,24 +321,76 @@ else:
                 st.warning(f"⚠️ {erro_dados}")
             else:
                 st.title(f"📈 Dashboard Operacional ({mes_view}/{ano_view})")
+                
                 agentes = ["Todos"] + list(df_periodo['Nome Exibição'].dropna().unique())
                 filtro_agente = st.selectbox("Filtrar visualização por Agente:", agentes)
                 
                 df_view = df_periodo[df_periodo['Nome Exibição'] == filtro_agente] if filtro_agente != "Todos" else df_periodo.copy()
 
-                st.subheader("🎯 KPIs Globais")
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Média CSAT", f"{df_view['CSAT_Media'].mean():.2f}")
-                col2.metric("Média IR", f"{df_view['IR_Percentual'].mean():.2f}%")
-                col3.metric("Média Aderência", f"{df_view['Aderência (%)'].mean():.2f}%")
-                col4.metric("Média Conformidade", f"{df_view['Conformidade (%)'].mean():.2f}%")
+                # --- PROCESSAMENTO DOS INDICADORES GERAIS (CARDS BRISANET) ---
+                v_csat = df_view['CSAT_Media'].mean()
+                v_ir = df_view['IR_Percentual'].mean()
+                v_ade = df_view['Aderência (%)'].mean()
+                v_conf = df_view['Conformidade (%)'].mean()
+                
+                # Tratamento de Retenção consolidada
+                total_rt_geral = df_view['RT geral'].sum()
+                total_rt_valido = df_view['RT geral valido'].sum()
+                v_retencao = (total_rt_valido / total_rt_geral * 100) if total_rt_geral > 0 else 0.0
+                
+                # Tratamento de Mídias consolidadas
+                total_vol_chat = df_view['Vol. Chat'].sum()
+                tma_chat_medio = df_view['TMA Chat (Min)'].mean()
+                total_vol_voz = df_view['Vol. Voz'].sum()
+                tma_voz_medio = df_view['TMA Voz (Min)'].mean()
+
+                # === FILEIRA 1 DE CARDS (QUALIDADE E RETENÇÃO) ===
+                st.subheader("🎯 Principais KPIs de Qualidade")
+                c1, c2, c3, c4, c5 = st.columns(5)
+                
+                with c1:
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>⭐ Média CSAT</div><div class='kpi-value'>{v_csat:.2f}</div></div>", unsafe_allow_html=True)
+                with c2:
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>🎯 Média IR</div><div class='kpi-value'>{v_ir:.1f}%</div></div>", unsafe_allow_html=True)
+                with c3:
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>📈 Taxa Retenção</div><div class='kpi-value'>{v_retencao:.1f}%</div></div>", unsafe_allow_html=True)
+                with c4:
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>⏱️ Aderência</div><div class='kpi-value'>{v_ade:.1f}%</div></div>", unsafe_allow_html=True)
+                with c5:
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>🛡️ Conformidade</div><div class='kpi-value'>{v_conf:.1f}%</div></div>", unsafe_allow_html=True)
+
+                # === FILEIRA 2 DE CARDS (VOLUMETRIAS E PRODUTIVIDADE) ===
+                st.subheader("📊 Volumetria e Tempo de Atendimento (TMA)")
+                cx1, cx2, cx3, cx4 = st.columns(4)
+                
+                with cx1:
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>💬 Vol. Total Chat</div><div class='kpi-value'>{int(total_vol_chat):,}</div></div>", unsafe_allow_html=True)
+                with cx2:
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>⏳ TMA Médio Chat</div><div class='kpi-value'>{tma_chat_medio:.1f} min</div></div>", unsafe_allow_html=True)
+                with cx3:
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>📞 Vol. Total Voz</div><div class='kpi-value'>{int(total_vol_voz):,}</div></div>", unsafe_allow_html=True)
+                with cx4:
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>⏳ TMA Médio Voz</div><div class='kpi-value'>{tma_voz_medio:.1f} min</div></div>", unsafe_allow_html=True)
+
                 st.markdown("---")
                 
-                st.subheader("👥 Visão Consolidada por Agente")
+                # TABELA COMPLETA COM ESTILOS
+                st.subheader("👥 Visão Detalhada por Agente")
                 colunas = ['Nome Exibição', 'CSAT_Media', 'IR_Percentual', 'Aderência (%)', 'Conformidade (%)', 'Vol. Chat', 'TMA Chat (Min)', 'Vol. Voz', 'TMA Voz (Min)', 'RT geral', 'RT geral valido']
                 df_tabela = df_view[colunas].copy()
                 df_tabela['% Retenção'] = (df_tabela['RT geral valido'] / df_tabela['RT geral']) * 100
-                st.dataframe(df_tabela.style.format({'CSAT_Media': '{:.2f}', 'IR_Percentual': '{:.2f}%', 'Aderência (%)': '{:.2f}%', 'Conformidade (%)': '{:.2f}%', '% Retenção': '{:.2f}%', 'TMA Chat (Min)': '{:.1f}m', 'TMA Voz (Min)': '{:.1f}m'}), use_container_width=True)
+                st.dataframe(df_tabela.style.format({
+                    'CSAT_Media': '{:.2f}', 
+                    'IR_Percentual': '{:.1f}%', 
+                    'Aderência (%)': '{:.1f}%', 
+                    'Conformidade (%)': '{:.1f}%', 
+                    '% Retenção': '{:.1f}%', 
+                    'Vol. Chat': '{:,.0f}',
+                    'TMA Chat (Min)': '{:.1f}m', 
+                    'Vol. Voz': '{:,.0f}',
+                    'TMA Voz (Min)': '{:.1f}m',
+                    'RT geral': '{:,.0f}'
+                }), use_container_width=True)
 
     # ==========================================
     # VISÃO DO AGENTE
@@ -329,30 +406,28 @@ else:
             
             if not meus_dados.empty:
                 dados = meus_dados.iloc[0]
-                st.markdown("### ⭐ Satisfação e Qualidade")
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Minha Nota CSAT", f"{dados['CSAT_Media']:.2f}" if pd.notna(dados['CSAT_Media']) else "N/A")
-                c2.metric("Meu IR (%)", f"{dados['IR_Percentual']:.2f}%" if pd.notna(dados['IR_Percentual']) else "N/A")
-                c3.metric("Minha Aderência", f"{dados['Aderência (%)']:.2f}%" if pd.notna(dados['Aderência (%)']) else "N/A")
-                c4.metric("Minha Conformidade", f"{dados['Conformidade (%)']:.2f}%" if pd.notna(dados['Conformidade (%)']) else "N/A")
-                st.markdown("---")
                 
-                st.markdown("### 🎧 Operação (Chat / Voz)")
+                # CARDS PARA O AGENTE INDIVIDUAL
+                st.markdown("### ⭐ Minha Performance")
+                ca1, ca2, ca3, ca4 = st.columns(4)
+                with ca1:
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu CSAT</div><div class='kpi-value'>{dados['CSAT_Media']:.2f}</div></div>", unsafe_allow_html=True)
+                with ca2:
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu IR</div><div class='kpi-value'>{dados['IR_Percentual']:.1f}%</div></div>", unsafe_allow_html=True)
+                with ca3:
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Minha Aderência</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div></div>", unsafe_allow_html=True)
+                with ca4:
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Minha Conformidade</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div></div>", unsafe_allow_html=True)
+
+                st.markdown("### 🎧 Meus Volumes e Atendimento")
                 co1, co2, co3, co4 = st.columns(4)
-                co1.metric("Volume Chat", int(dados['Vol. Chat']) if pd.notna(dados['Vol. Chat']) else 0)
-                co2.metric("Meu TMA Chat", f"{dados['TMA Chat (Min)']:.1f} min" if pd.notna(dados['TMA Chat (Min)']) else "N/A")
-                co3.metric("Volume Voz", int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0)
-                co4.metric("Meu TMA Voz", f"{dados['TMA Voz (Min)']:.1f} min" if pd.notna(dados['TMA Voz (Min)']) else "N/A")
-                st.markdown("---")
-                
-                st.markdown("### 💰 Retenção")
-                rt_geral = dados['RT geral']
-                rt_valido = dados['RT geral valido']
-                minha_tx_ret = (rt_valido / rt_geral * 100) if pd.notna(rt_geral) and rt_geral > 0 else 0
-                
-                cr1, cr2, cr3 = st.columns(3)
-                cr1.metric("Volume Tratado", int(rt_geral) if pd.notna(rt_geral) else 0)
-                cr2.metric("Volume Retido", int(rt_valido) if pd.notna(rt_valido) else 0)
-                cr3.metric("Minha Taxa", f"{minha_tx_ret:.2f}%")
+                with co1:
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Chats Atendidos</div><div class='kpi-value'>{int(dados['Vol. Chat']) if pd.notna(dados['Vol. Chat']) else 0}</div></div>", unsafe_allow_html=True)
+                with co2:
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Meu TMA Chat</div><div class='kpi-value'>{dados['TMA Chat (Min']:.1f} m</div></div>", unsafe_allow_html=True)
+                with co3:
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
+                with cx4:
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Meu TMA Voz</div><div class='kpi-value'>{dados['TMA Voz (Min)']:.1f} m</div></div>", unsafe_allow_html=True)
             else:
                 st.info("Nenhum dado operacional associado ao seu perfil para o mês selecionado.")
