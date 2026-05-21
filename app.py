@@ -2,19 +2,27 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from github import Github
+import urllib.error
 
 # ==========================================
 # CONFIGURAÇÕES GERAIS E CREDENCIAIS
 # ==========================================
 st.set_page_config(page_title="Sistema Operacional 360", page_icon="🎯", layout="wide")
 
-# Credenciais de acesso (Pode alterar como preferir)
 GESTOR_EMAIL = "admin@brisanet.com.br"
 GESTOR_SENHA = "admin"
-SENHA_PADRAO_AGENTE = "1234" # Senha genérica para todos os operadores iniciarem
+SENHA_PADRAO_AGENTE = "1234" 
 
 # IMPORTANTE: SUBSTITUA PELOS SEUS DADOS DO GITHUB
 BASE_URL = "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/"
+
+# Dicionários de Controle Mensal
+MESES = {
+    "Janeiro": "01", "Fevereiro": "02", "Março": "03", "Abril": "04",
+    "Maio": "05", "Junho": "06", "Julho": "07", "Agosto": "08",
+    "Setembro": "09", "Outubro": "10", "Novembro": "11", "Dezembro": "12"
+}
+ANOS = ["2026", "2027", "2028", "2029", "2030"]
 
 # ==========================================
 # GESTÃO DE SESSÃO (MEMÓRIA DE LOGIN)
@@ -30,7 +38,7 @@ def fazer_logout():
     st.session_state.perfil = ""
     st.session_state.user_email = ""
     st.session_state.user_nome = ""
-    st.cache_data.clear() # Limpa os dados em cache por segurança
+    st.cache_data.clear() 
 
 # ==========================================
 # FUNÇÕES DE TRATAMENTO E GITHUB
@@ -60,26 +68,28 @@ def enviar_para_github(nome_arquivo_git, arquivo_carregado):
         try:
             arquivo_existente = repo.get_contents(nome_arquivo_git)
             repo.update_file(arquivo_existente.path, f"Atualização via Streamlit: {nome_arquivo_git}", conteudo, arquivo_existente.sha)
-            st.cache_data.clear() # Limpa o cache para baixar os novos dados
-            return True, f"{nome_arquivo_git} atualizado com sucesso!"
+            st.cache_data.clear() 
+            return True, f"{nome_arquivo_git} atualizado!"
         except Exception:
             repo.create_file(nome_arquivo_git, f"Criação via Streamlit: {nome_arquivo_git}", conteudo)
             st.cache_data.clear()
-            return True, f"{nome_arquivo_git} criado com sucesso!"
+            return True, f"{nome_arquivo_git} criado!"
     except Exception as e:
-        return False, f"Erro na ligação ao GitHub: {e}"
+        return False, f"Erro no GitHub: {e}"
 
-@st.cache_data(ttl=600) # Cache de 10 minutos para deixar a aplicação super rápida
-def carregar_todos_os_dados():
-    # Lê todos os ficheiros do GitHub
-    df_perf = pd.read_csv(f"{BASE_URL}dados_aderencia.csv")
-    df_ret = pd.read_csv(f"{BASE_URL}dados_retencao.csv")
+@st.cache_data(ttl=600)
+def carregar_todos_os_dados(sufixo_mes_ano):
+    # A lista de usuários não precisa de mês, ela é uma base fixa global que você atualiza quando entra/sai alguém
     df_users = pd.read_csv(f"{BASE_URL}dados_usuarios.csv")
-    df_chat = pd.read_csv(f"{BASE_URL}dados_chat.csv")
-    df_voz = pd.read_csv(f"{BASE_URL}dados_voz.csv")
-    df_pesq = pd.read_csv(f"{BASE_URL}dados_pesquisa.csv")
     
-    # Tratamentos
+    # Os outros arquivos ganham a tag do mês (ex: dados_aderencia_05_2026.csv)
+    df_perf = pd.read_csv(f"{BASE_URL}dados_aderencia_{sufixo_mes_ano}.csv")
+    df_ret = pd.read_csv(f"{BASE_URL}dados_retencao_{sufixo_mes_ano}.csv")
+    df_chat = pd.read_csv(f"{BASE_URL}dados_chat_{sufixo_mes_ano}.csv")
+    df_voz = pd.read_csv(f"{BASE_URL}dados_voz_{sufixo_mes_ano}.csv")
+    df_pesq = pd.read_csv(f"{BASE_URL}dados_pesquisa_{sufixo_mes_ano}.csv")
+    
+    # Tratamentos de texto
     df_perf['Aderência (%)'] = df_perf['Aderência (%)'].apply(limpar_porcentagem)
     df_perf['Conformidade (%)'] = df_perf['Conformidade (%)'].apply(limpar_porcentagem)
     df_perf['Chave_Nome'] = df_perf['Agente'].astype(str).str.strip().str.upper()
@@ -102,7 +112,7 @@ def carregar_todos_os_dados():
     df_pesq['CSAT'] = pd.to_numeric(df_pesq['CSAT'], errors='coerce')
     df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(CSAT_Media=('CSAT', 'mean'), IR_Percentual=('IR', calcular_ir)).reset_index()
 
-    # Mesclando tudo
+    # Cruzamento de dados
     df_completo = pd.merge(df_users, df_perf, on='Chave_Nome', how='left')
     df_completo = pd.merge(df_completo, df_ret, on='Chave_Nome', how='left')
     df_completo = pd.merge(df_completo, df_chat_agg, on='Chave_Nome', how='left')
@@ -121,7 +131,7 @@ if not st.session_state.logged_in:
     col_vazia1, col_login, col_vazia2 = st.columns([1, 2, 1])
     
     with col_login:
-        st.markdown("### Por favor, insira as suas credenciais")
+        st.markdown("### Por favor, insira suas credenciais")
         email_input = st.text_input("E-mail corporativo")
         senha_input = st.text_input("Senha", type="password")
         
@@ -130,12 +140,9 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.perfil = "Gestor"
                 st.session_state.user_nome = "Gestor"
-                st.rerun() # Atualiza a página automaticamente
-                
+                st.rerun() 
             else:
-                # Validação para os Agentes
                 try:
-                    # Lê apenas o arquivo de utilizadores para validar o login
                     df_users_login = pd.read_csv(f"{BASE_URL}dados_usuarios.csv")
                     lista_emails = df_users_login['E-mail'].dropna().tolist()
                     
@@ -149,7 +156,7 @@ if not st.session_state.logged_in:
                     else:
                         st.error("E-mail não encontrado ou senha incorreta.")
                 except Exception:
-                    st.warning("Base de dados indisponível. Apenas o Gestor pode aceder para enviar os ficheiros iniciais.")
+                    st.warning("Base indisponível. Apenas o Gestor pode acessar para realizar a primeira configuração.")
 
 # ==========================================
 # SISTEMA LOGADO
@@ -158,6 +165,13 @@ else:
     # --- BARRA LATERAL (COMUM A TODOS) ---
     st.sidebar.title("Opções")
     st.sidebar.success(f"Logado como: **{st.session_state.user_nome}**")
+    
+    # Controle Mensal na Barra Lateral
+    st.sidebar.markdown("### 📅 Filtro de Período")
+    mes_view = st.sidebar.selectbox("Selecione o Mês:", list(MESES.keys()))
+    ano_view = st.sidebar.selectbox("Selecione o Ano:", ANOS)
+    sufixo_view = f"{MESES[mes_view]}_{ano_view}"
+    
     if st.sidebar.button("🚪 Sair (Logout)", use_container_width=True):
         fazer_logout()
         st.rerun()
@@ -166,11 +180,15 @@ else:
 
     # --- CARREGAR DADOS ---
     try:
-        df_completo = carregar_todos_os_dados()
+        df_completo = carregar_todos_os_dados(sufixo_view)
         dados_carregados = True
+    except urllib.error.HTTPError:
+        # Erro específico se o arquivo daquele mês não existir no GitHub
+        dados_carregados = False
+        erro_dados = "Não há dados cadastrados para o período selecionado."
     except Exception as e:
         dados_carregados = False
-        erro_dados = e
+        erro_dados = str(e)
 
     # ==========================================
     # VISÃO DO GESTOR
@@ -181,65 +199,58 @@ else:
         # ABA: ADMINISTRAÇÃO
         with aba_upload:
             st.header("⚙️ Atualização da Base de Dados")
+            
+            st.info("👇 **Passo 1:** Selecione de qual Mês e Ano são os arquivos que você vai subir agora.")
+            col_m, col_a = st.columns(2)
+            mes_up = col_m.selectbox("Mês de Referência para envio:", list(MESES.keys()))
+            ano_up = col_a.selectbox("Ano para envio:", ANOS)
+            sufixo_up = f"{MESES[mes_up]}_{ano_up}"
+            
+            st.markdown("---")
+            st.write("👇 **Passo 2:** Faça o upload dos relatórios exportados do seu sistema.")
             c1, c2, c3 = st.columns(3)
             with c1:
                 st.subheader("Qualidade")
                 up_ad = st.file_uploader("1. Aderência", type=["csv"], key="ad")
                 if up_ad and st.button("Salvar Aderência"):
-                    suc, msg = enviar_para_github("dados_aderencia.csv", up_ad)
-                    if suc:
-                        st.success(msg)
-                    else:
-                        st.error(msg)
+                    suc, msg = enviar_para_github(f"dados_aderencia_{sufixo_up}.csv", up_ad)
+                    if suc: st.success(msg) else: st.error(msg)
                         
                 up_pq = st.file_uploader("2. Pesquisa", type=["csv"], key="pq")
                 if up_pq and st.button("Salvar Pesquisa"):
-                    suc, msg = enviar_para_github("dados_pesquisa.csv", up_pq)
-                    if suc:
-                        st.success(msg)
-                    else:
-                        st.error(msg)
+                    suc, msg = enviar_para_github(f"dados_pesquisa_{sufixo_up}.csv", up_pq)
+                    if suc: st.success(msg) else: st.error(msg)
             with c2:
                 st.subheader("Operação")
                 up_ch = st.file_uploader("3. Chat", type=["csv"], key="ch")
                 if up_ch and st.button("Salvar Chat"):
-                    suc, msg = enviar_para_github("dados_chat.csv", up_ch)
-                    if suc:
-                        st.success(msg)
-                    else:
-                        st.error(msg)
+                    suc, msg = enviar_para_github(f"dados_chat_{sufixo_up}.csv", up_ch)
+                    if suc: st.success(msg) else: st.error(msg)
                         
                 up_vz = st.file_uploader("4. Voz", type=["csv"], key="vz")
                 if up_vz and st.button("Salvar Voz"):
-                    suc, msg = enviar_para_github("dados_voz.csv", up_vz)
-                    if suc:
-                        st.success(msg)
-                    else:
-                        st.error(msg)
+                    suc, msg = enviar_para_github(f"dados_voz_{sufixo_up}.csv", up_vz)
+                    if suc: st.success(msg) else: st.error(msg)
             with c3:
                 st.subheader("Retenção/Acessos")
                 up_rt = st.file_uploader("5. Retenção", type=["csv"], key="rt")
                 if up_rt and st.button("Salvar Retenção"):
-                    suc, msg = enviar_para_github("dados_retencao.csv", up_rt)
-                    if suc:
-                        st.success(msg)
-                    else:
-                        st.error(msg)
+                    suc, msg = enviar_para_github(f"dados_retencao_{sufixo_up}.csv", up_rt)
+                    if suc: st.success(msg) else: st.error(msg)
                         
-                up_us = st.file_uploader("6. Utilizadores", type=["csv"], key="us")
-                if up_us and st.button("Salvar Utilizadores"):
+                up_us = st.file_uploader("6. Lista de Usuários", type=["csv"], key="us")
+                if up_us and st.button("Salvar Usuários (Geral)"):
+                    # A lista de usuários não tem sufixo de mês, é única.
                     suc, msg = enviar_para_github("dados_usuarios.csv", up_us)
-                    if suc:
-                        st.success(msg)
-                    else:
-                        st.error(msg)
+                    if suc: st.success(msg) else: st.error(msg)
                     
         # ABA: DASHBOARD GESTOR
         with aba_dashboard:
             if not dados_carregados:
-                st.warning("⚠️ Os ficheiros ainda não foram carregados no GitHub. Vá à aba de Administração e envie os 6 ficheiros.")
+                st.warning(f"⚠️ {erro_dados}")
+                st.info(f"Vá na aba de Administração, selecione **{mes_view}/{ano_view}** e envie os arquivos.")
             else:
-                st.title("📈 Dashboard Operacional 360")
+                st.title(f"📈 Dashboard Operacional ({mes_view}/{ano_view})")
                 agentes = ["Todos"] + list(df_completo['Nome Exibição'].dropna().unique())
                 filtro_agente = st.selectbox("Filtrar visualização por Agente:", agentes)
                 
@@ -264,11 +275,10 @@ else:
     # ==========================================
     elif st.session_state.perfil == "Agente":
         if not dados_carregados:
-            st.error("O sistema está a ser atualizado pelo gestor. Tente novamente mais tarde.")
+            st.error(f"⚠️ {erro_dados}")
         else:
-            st.title("👤 O Meu Painel de Performance")
+            st.title(f"👤 Meu Painel ({mes_view}/{ano_view})")
             
-            # Filtra AUTOMATICAMENTE os dados usando o e-mail que fez o login!
             meus_dados = df_completo[df_completo['E-mail'] == st.session_state.user_email]
             
             if not meus_dados.empty:
@@ -298,6 +308,6 @@ else:
                 cr1, cr2, cr3 = st.columns(3)
                 cr1.metric("Volume Tratado", int(rt_geral) if pd.notna(rt_geral) else 0)
                 cr2.metric("Volume Retido", int(rt_valido) if pd.notna(rt_valido) else 0)
-                cr3.metric("A Minha Taxa", f"{minha_tx_ret:.2f}%")
+                cr3.metric("Minha Taxa", f"{minha_tx_ret:.2f}%")
             else:
-                st.warning("Você logou com sucesso, mas ainda não há dados operacionais vinculados ao seu e-mail neste ciclo.")
+                st.warning("Você logou com sucesso, mas não há dados operacionais vinculados ao seu e-mail neste mês.")
