@@ -91,7 +91,6 @@ def enviar_para_github(nome_arquivo_git, conteudo):
 
 def limpar_porcentagem(valor):
     if pd.isna(valor): return 0.0
-    # Se já for um float menor ou igual a 1 (como o seu arquivo original veio: 0.5937)
     try:
         val = float(valor)
         if val <= 1.0 and val > 0:
@@ -266,7 +265,6 @@ else:
                             df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                             df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
                             
-                            # Calcula de forma reversa o total tratado real para ponderação exata posterior
                             df_ret['RT geral calculado'] = df_ret.apply(
                                 lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'],
                                 axis=1
@@ -370,18 +368,22 @@ else:
                 
                 if tem_coluna_ret_original:
                     if filtro_agente == "Todos":
-                        # Para a equipe inteira, calculamos a média ponderada pelo volume de válidas de cada um
-                        total_calculado_equipe = df_view['RT geral calculado'].sum()
+                        total_calculado_equipe = df_view['RT geral calculated'].sum() if 'RT geral calculated' in df_view.columns else df_view['RT geral calculado'].sum() if 'RT geral calculado' in df_view.columns else 0
+                        # Forçando compatibilidade com o nome da coluna salva
+                        col_total_nome = 'RT geral calculado' if 'RT geral calculado' in df_view.columns else 'RT geral calculated'
+                        total_calculado_equipe = df_view[col_total_nome].sum()
                         v_retencao = (total_rt_valido / total_calculado_equipe * 100) if total_calculado_equipe > 0 else 0.0
                         sub_legenda_ret = f"Total da Operação: {int(total_rt_valido):,} retidos válidos"
                     else:
-                        # Para um único agente, traz o valor exato dele
                         v_retencao = df_view['Taxa_Retencao_Original'].iloc[0]
                         sub_legenda_ret = f"Total Individual: {int(total_rt_valido)} retidos"
                 else:
                     v_retencao = 0.0
                     sub_legenda_ret = "⚠️ Atualize a planilha na aba ao lado"
                 
+                # Taxa de Cancelamento Global (Complemento)
+                v_cancelamento = 100 - v_retencao if v_retencao > 0 else 0.0
+
                 total_vol_chat = df_view['Vol. Chat'].sum()
                 tma_chat_medio = df_view['TMA Chat (Min)'].mean()
                 total_vol_voz = df_view['Vol. Voz'].sum()
@@ -396,20 +398,20 @@ else:
                 with c2:
                     st.markdown(f"<div class='kpi-card'><div class='kpi-title'>🎯 Índice IR</div><div class='kpi-value'>{v_ir:.1f}%</div><div style='font-size:11px;color:#6c757d;'>{sub_legenda_ir}</div></div>", unsafe_allow_html=True)
                 with c3:
-                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>📈 Taxa Retenção</div><div class='kpi-value'>{v_retencao:.2f}%</div><div style='font-size:11px;color:#6c757d;'>{sub_legenda_ret}</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>📈 Taxa Retenção</div><div class='kpi-value'>{v_retencao:.2f}%</div><div style='font-size:11px;color:#6c757d;'>{sub_legenda_ret}</div></div>", unsafe_allow_html=True)
                 with c4:
-                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>⏱️ Aderência</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#28a745;'>Média Equipe</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>📉 Taxa Cancelamento</div><div class='kpi-value'>{v_cancelamento:.2f}%</div><div style='font-size:11px;color:#dc3545;'>Complemento Real</div></div>", unsafe_allow_html=True)
                 with c5:
-                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>🛡️ Conformidade</div><div class='kpi-value'>{v_conf:.1f}%</div><div style='font-size:11px;color:#28a745;'>Média Equipe</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>⏱️ Aderência</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Média Equipe</div></div>", unsafe_allow_html=True)
 
                 # === FILEIRA 2 DE CARDS ===
                 st.subheader("📊 Volumetria e Tempo de Atendimento (TMA)")
                 cx1, cx2, cx3, cx4 = st.columns(4)
                 
                 with cx1:
-                    st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>💬 Vol. Total Chat</div><div class='kpi-value'>{int(total_vol_chat):,}</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>💬 Vol. Total Chat</div><div class='kpi-value'>{int(total_vol_chat):,}</div></div>", unsafe_allow_html=True)
                 with cx2:
-                    st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>⏳ TMA Médio Chat</div><div class='kpi-value'>{tma_chat_medio:.1f} min</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>⏳ TMA Médio Chat</div><div class='kpi-value'>{tma_chat_medio:.1f} min</div></div>", unsafe_allow_html=True)
                 with cx3:
                     st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>📞 Vol. Total Voz</div><div class='kpi-value'>{int(total_vol_voz):,}</div></div>", unsafe_allow_html=True)
                 with cx4:
@@ -417,7 +419,7 @@ else:
 
                 st.markdown("---")
                 
-                # TABELA DETALHADA POR AGENTE
+                # TABELA DETALHADA POR AGENTE COM CANCELAMENTO
                 st.subheader("👥 Visão Detalhada por Agente")
                 df_tabela = df_view.copy()
                 
@@ -429,8 +431,9 @@ else:
                     df_tabela['IR_Agente (%)'] = df_tabela['IR_Percentual'].fillna(0)
                     
                 df_tabela['% Retenção'] = df_tabela['Taxa_Retencao_Original'].fillna(0) if tem_coluna_ret_original else 0.0
+                df_tabela['% Cancelamento'] = df_tabela.apply(lambda row: 100 - row['% Retenção'] if row['% Retenção'] > 0 else 0.0, axis=1)
                 
-                colunas_tabela = ['Nome Exibição', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Aderência (%)', 'Conformidade (%)', 'Vol. Chat', 'TMA Chat (Min)', 'Vol. Voz', 'TMA Voz (Min)', 'RT geral valido', '% Retenção']
+                colunas_tabela = ['Nome Exibição', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Aderência (%)', 'Conformidade (%)', 'Vol. Chat', 'TMA Chat (Min)', 'Vol. Voz', 'TMA Voz (Min)', 'RT geral valido', '% Retenção', '% Cancelamento']
                 
                 st.dataframe(df_tabela[colunas_tabela].style.format({
                     'CSAT_Agente (%)': '{:.1f}%', 
@@ -438,6 +441,7 @@ else:
                     'Aderência (%)': '{:.1f}%', 
                     'Conformidade (%)': '{:.1f}%', 
                     '% Retenção': '{:.2f}%', 
+                    '% Cancelamento': '{:.2f}%', 
                     'Vol. Chat': '{:,.0f}',
                     'TMA Chat (Min)': '{:.1f}m', 
                     'Vol. Voz': '{:,.0f}',
@@ -475,6 +479,7 @@ else:
                     sub_ag_ir = "Pendente"
                     
                 my_tx_ret = dados['Taxa_Retencao_Original'] if tem_coluna_ret_original else 0.0
+                my_tx_canc = 100 - my_tx_ret if my_tx_ret > 0 else 0.0
                 
                 st.markdown("### ⭐ Minha Performance")
                 ca1, ca2, ca3, ca4 = st.columns(4)
@@ -496,6 +501,6 @@ else:
                 with co3:
                     st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
                 with co4:
-                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;'>Retidos Válidos: {int(dados['RT geral valido'])}</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;'>Retidos: {int(dados['RT geral valido'])} | Cancelados: {my_tx_canc:.1f}%</div></div>", unsafe_allow_html=True)
             else:
                 st.info("Nenhum dado operacional associado ao seu perfil para o mês selecionado.")
