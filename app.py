@@ -314,13 +314,13 @@ else:
                             csv_final = df_novo.to_csv(index=False)
                             enviar_para_github("dados_consolidados_master.csv", csv_final)
                             st.cache_data.clear()
-                            st.success("Base Mestre consolidada com sucesso!")
+                            st.success("Base Mestre atualizada!")
                             time.sleep(0.5)
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro: {e}")
 
-        # ABA DASHBOARD DE INDICADORES (A CORREÇÃO ESTRUTURAL COMPLETA)
+        # ABA DASHBOARD DE INDICADORES (CRITÉRIO MESTRE DE CADENAÇÃO DE FILTRO)
         with aba_dashboard:
             if not base_mestre_existe:
                 st.warning("📢 Base mestre indisponível no repositório.")
@@ -329,9 +329,10 @@ else:
             else:
                 st.title(f"📈 Painel Analítico de Controle Operacional ({mes_view}/{ano_view})")
                 
-                # 1. FILTRO DE STATUS DA EQUIPE (O GATILHO MESTRE)
+                # 1. O GATILHO MESTRE DE TODA A PÁGINA (BOTÃO DE FLIP DE STATUS)
                 modo_visao = st.radio("Filtro de Status de Equipe:", ["Mostrar Apenas Ativos", "Mostrar Todos (Incluir Férias/Afastados)"], horizontal=True)
                 
+                # CORTA A BASE AQUI - TUDO ABAIXO DISSO VAI SEGUIR ESSA REGRA SEM EXCEÇÃO
                 if 'Status' in df_periodo.columns and modo_visao == "Mostrar Apenas Ativos":
                     df_filtrado_status = df_periodo[df_periodo['Status'].fillna('Ativo').str.strip().str.title() == 'Ativo']
                     sub_status_text = "Apenas Quadro Ativo"
@@ -339,7 +340,7 @@ else:
                     df_filtrado_status = df_periodo.copy()
                     sub_status_text = "Todo o Quadro Nominal"
 
-                # Criação das colunas dinâmicas individuais com base na tabela tratada
+                # Geração da base unificada tratada nominalmente
                 df_calculado = df_filtrado_status.copy()
                 if 'Total_Pesq_CSAT' in df_calculado.columns:
                     df_calculado['CSAT_Agente (%)'] = (df_calculado['Boas_Pesq_CSAT'] / df_calculado['Total_Pesq_CSAT'] * 100).fillna(0)
@@ -352,7 +353,7 @@ else:
                 df_calculado['% Cancelamento'] = df_calculado.apply(lambda r: 100 - r['% Retenção'] if r['% Retenção'] > 0 else 0.0, axis=1)
 
                 # ==========================================
-                # 🚨 EXPANDERS RETRÁTEIS DE AUDITORIA DE DESVIOS
+                # 🚨 EXPANDERS NOMINAIS DE AUDITORIA (OBEDECE FILTRO EM 100%)
                 # ==========================================
                 st.subheader("🚨 Auditoria de Desvios de Metas")
                 
@@ -400,17 +401,17 @@ else:
 
                 st.markdown("---")
 
-                # FILTROS DE FOCO INDIVIDUAL (BUSCA DO DATAFRAME FILTRADO JÁ PELO BOTÃO)
+                # FILTROS DE FOCO NOMINAL INDIVIDUAL
                 st.markdown("### 👥 Escopo da Análise")
                 c_s1, c_s2 = st.columns(2)
                 with c_s1:
                     agentes_lista = ["Todos"] + list(df_calculado['Nome Exibição'].dropna().unique())
                     filtro_agente = st.selectbox("Selecionar foco nominal:", agentes_lista)
                 
-                # Geração da base final que vai desenhar os Cards de Destaque Gerais
+                # Base restrita final que vai alimentar o resto da tela inteira
                 df_final_escopo = df_calculado[df_calculado['Nome Exibição'] == filtro_agente] if filtro_agente != "Todos" else df_calculado.copy()
 
-                # --- 💥 PROCESSAMENTO UNIFICADO DOS CARDS GERAIS DA TELA 💥 ---
+                # --- PROCESSAMENTO DOS CARDS OPERACIONAIS ---
                 if 'Total_Pesq_CSAT' in df_final_escopo.columns:
                     tot_csat = df_final_escopo['Total_Pesq_CSAT'].sum()
                     boas_csat = df_final_escopo['Boas_Pesq_CSAT'].sum()
@@ -449,7 +450,7 @@ else:
                 total_vol_voz = df_final_escopo['Vol. Voz'].sum()
                 tma_voz_medio = df_final_escopo['TMA Voz (Min)'].mean()
 
-                # EXIBIÇÃO EM CARDS 100% DINÂMICOS CONFORME OS FILTROS DA TELA
+                # DESIGN DOS CARDS DE DESTAQUE
                 st.subheader(f"🎯 Métricas Consolidadas ({filtro_agente})")
                 c1, c2, c3, c4, c5 = st.columns(5)
                 with c1:
@@ -543,7 +544,9 @@ else:
                     st.plotly_chart(fig, use_container_width=True)
                     st.markdown("---")
 
-                # TABELA DE DETALHAMENTO NOMINAL COMPLETA
+                # ==========================================
+                # 👥 ÚLTIMA TABELA DA PÁGINA (FILTRADA E SINCRONIZADA EM 100%)
+                # ==========================================
                 st.subheader("👥 Detalhamento Operacional por Colaborador")
                 colunas_tabela = ['Nome Exibição', 'Status' if 'Status' in df_final_escopo.columns else 'Nome Exibição', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Aderência (%)', 'Conformidade (%)', 'Vol. Chat', 'TMA Chat (Min)', 'Vol. Voz', 'TMA Voz (Min)', 'RT geral valido', '% Retenção', '% Cancelamento']
                 colunas_tabela = list(dict.fromkeys(colunas_tabela))
