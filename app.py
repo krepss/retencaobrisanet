@@ -233,7 +233,7 @@ else:
                         time.sleep(0.5)
                         st.rerun()
             except Exception:
-                st.warning("O arquivo base de usuários ainda não existe.")
+                st.warning("O arquivo mestre de usuários não foi localizado.")
 
         # ABA UPLOAD
         with aba_upload:
@@ -314,28 +314,32 @@ else:
                             csv_final = df_novo.to_csv(index=False)
                             enviar_para_github("dados_consolidados_master.csv", csv_final)
                             st.cache_data.clear()
-                            st.success("Base Mestre atualizada!")
+                            st.success("Base Mestre consolidada com sucesso!")
                             time.sleep(0.5)
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro: {e}")
 
-        # ABA DASHBOARD
+        # ABA DASHBOARD DE INDICADORES (A CORREÇÃO ESTRUTURAL COMPLETA)
         with aba_dashboard:
             if not base_mestre_existe:
-                st.warning("📢 Base mestre indisponível.")
+                st.warning("📢 Base mestre indisponível no repositório.")
             elif not dados_carregados:
                 st.warning(f"⚠️ {erro_dados}")
             else:
-                st.title(f"📊 Painel Analítico de Controle Operacional ({mes_view}/{ano_view})")
+                st.title(f"📈 Painel Analítico de Controle Operacional ({mes_view}/{ano_view})")
                 
+                # 1. FILTRO DE STATUS DA EQUIPE (O GATILHO MESTRE)
                 modo_visao = st.radio("Filtro de Status de Equipe:", ["Mostrar Apenas Ativos", "Mostrar Todos (Incluir Férias/Afastados)"], horizontal=True)
                 
                 if 'Status' in df_periodo.columns and modo_visao == "Mostrar Apenas Ativos":
                     df_filtrado_status = df_periodo[df_periodo['Status'].fillna('Ativo').str.strip().str.title() == 'Ativo']
+                    sub_status_text = "Apenas Quadro Ativo"
                 else:
                     df_filtrado_status = df_periodo.copy()
+                    sub_status_text = "Todo o Quadro Nominal"
 
+                # Criação das colunas dinâmicas individuais com base na tabela tratada
                 df_calculado = df_filtrado_status.copy()
                 if 'Total_Pesq_CSAT' in df_calculado.columns:
                     df_calculado['CSAT_Agente (%)'] = (df_calculado['Boas_Pesq_CSAT'] / df_calculado['Total_Pesq_CSAT'] * 100).fillna(0)
@@ -348,17 +352,15 @@ else:
                 df_calculado['% Cancelamento'] = df_calculado.apply(lambda r: 100 - r['% Retenção'] if r['% Retenção'] > 0 else 0.0, axis=1)
 
                 # ==========================================
-                # 🚨 CORREÇÃO CIRÚRGICA DOS ALERTAS (SEPARADOS POR INDICADOR)
+                # 🚨 EXPANDERS RETRÁTEIS DE AUDITORIA DE DESVIOS
                 # ==========================================
-                st.subheader("🚨 Auditoria de Desvios de Metas (Quadro Ativo)")
-                df_ativos_alertas = df_calculado[df_calculado['Status'].fillna('Ativo').str.strip().str.title() == 'Ativo'] if 'Status' in df_calculado.columns else df_calculado.copy()
+                st.subheader("🚨 Auditoria de Desvios de Metas")
                 
-                # Listas isoladas para não misturar aprovações e reprovações
-                lista_detratores_csat = df_ativos_alertas[df_ativos_alertas['CSAT_Agente (%)'] < META_CSAT]
-                lista_detratores_ir = df_ativos_alertas[df_ativos_alertas['IR_Agente (%)'] < META_IR]
-                detratores_retencao = df_ativos_alertas[df_ativos_alertas['% Retenção'] < META_RETENCAO]
-                lista_detratores_ade = df_ativos_alertas[df_ativos_alertas['Aderência (%)'] < META_ADERENCIA]
-                lista_detratores_conf = df_ativos_alertas[df_ativos_alertas['Conformidade (%)'] < META_CONFORMIDADE]
+                lista_detratores_csat = df_calculado[df_calculado['CSAT_Agente (%)'] < META_CSAT]
+                lista_detratores_ir = df_calculado[df_calculado['IR_Agente (%)'] < META_IR]
+                detratores_retencao = df_calculado[df_calculado['% Retenção'] < META_RETENCAO]
+                lista_detratores_ade = df_calculado[df_calculado['Aderência (%)'] < META_ADERENCIA]
+                lista_detratores_conf = df_calculado[df_calculado['Conformidade (%)'] < META_CONFORMIDADE]
                 
                 total_desvios_qualidade = len(lista_detratores_csat) + len(lista_detratores_ir)
                 total_desvios_processo = len(lista_detratores_ade) + len(lista_detratores_conf)
@@ -366,12 +368,11 @@ else:
                 col_alerta_1, col_alerta_2, col_alerta_3 = st.columns(3)
                 
                 with col_alerta_1:
-                    label_q = f"🔻 Qualidade: {total_desvios_qualidade} desvios encontrados" if total_desvios_qualidade > 0 else "✅ Qualidade: 100% na meta"
+                    label_q = f"🔻 Qualidade: {total_desvios_qualidade} desvios na seleção" if total_desvios_qualidade > 0 else "✅ Qualidade: 100% na meta"
                     with st.expander(label_q, expanded=False):
                         if total_desvios_qualidade == 0:
-                            st.write("Toda a equipe ativa cumpre as metas de CSAT e IR.")
+                            st.write("Nenhum desvio de CSAT ou IR encontrado.")
                         else:
-                            # Mostra estritamente quem está abaixo da meta do indicador individual
                             for _, row in lista_detratores_csat.iterrows():
                                 st.markdown(f"<div class='detractor-box'>⭐ <b>{row['Nome Exibição']}</b> | CSAT abaixo da meta: <b>{row['CSAT_Agente (%)']:.1f}%</b> (Meta: {META_CSAT}%)</div>", unsafe_allow_html=True)
                             for _, row in lista_detratores_ir.iterrows():
@@ -381,68 +382,74 @@ else:
                     label_r = f"📉 Retenção: {len(detratores_retencao)} abaixo da meta" if not detratores_retencao.empty else "✅ Retenção: 100% na meta"
                     with st.expander(label_r, expanded=False):
                         if detratores_retencao.empty:
-                            st.write("Toda a equipe ativa está cumprindo a meta de Retenção.")
+                            st.write("Nenhum desvio de Retenção encontrado.")
                         else:
                             for _, row in detratores_retencao.iterrows():
                                 st.markdown(f"<div class='detractor-box' style='background-color:#fffaf0;border-color:#fbd38d;color:#dd6b20;'>📉 <b>{row['Nome Exibição']}</b> | Retenção: <b>{row['% Retenção']:.2f}%</b> (Meta: {META_RETENCAO}%)</div>", unsafe_allow_html=True)
 
                 with col_alerta_3:
-                    label_p = f"⏱️ Processos: {total_desvios_processo} desvios encontrados" if total_desvios_processo > 0 else "✅ Processos: 100% na meta"
+                    label_p = f"⏱️ Processos: {total_desvios_processo} desvios na seleção" if total_desvios_processo > 0 else "✅ Processos: 100% na meta"
                     with st.expander(label_p, expanded=False):
                         if total_desvios_processo == 0:
-                            st.write("Toda a equipe ativa cumpre os prazos de Aderência e Conformidade.")
+                            st.write("Nenhum desvio de Aderência ou Conformidade encontrado.")
                         else:
                             for _, row in lista_detratores_ade.iterrows():
-                                st.markdown(f"<div class='detractor-box' style='background-color:#fffaf5;border-color:#feb2b2;color:#c53030;'>⏱️ <b>{row['Nome Exibição']}</b> | Aderência abaixo da meta: <b>{row['Aderência (%)']:.1f}%</b> (Meta: {META_ADERENCIA}%)</div>", unsafe_allow_html=True)
+                                st.markdown(f"<div class='detractor-box' style='background-color:#fffaf5;border-color:#feb2b2;color:#c53030;'>⏱️ <b>{row['Nome Exibição']}</b> | Aderência: <b>{row['Aderência (%)']:.1f}%</b> (Meta: {META_ADERENCIA}%)</div>", unsafe_allow_html=True)
                             for _, row in lista_detratores_conf.iterrows():
-                                st.markdown(f"<div class='detractor-box' style='background-color:#fffaf5;border-color:#feb2b2;color:#c53030;'>🛡️ <b>{row['Nome Exibição']}</b> | Conformidade abaixo da meta: <b>{row['Conformidade (%)']:.1f}%</b> (Meta: {META_CONFORMIDADE}%)</div>", unsafe_allow_html=True)
+                                st.markdown(f"<div class='detractor-box' style='background-color:#fffaf5;border-color:#feb2b2;color:#c53030;'>🛡️ <b>{row['Nome Exibição']}</b> | Conformidade: <b>{row['Conformidade (%)']:.1f}%</b> (Meta: {META_CONFORMIDADE}%)</div>", unsafe_allow_html=True)
 
                 st.markdown("---")
 
-                # FILTROS DE FOCO INDIVIDUAL
-                agentes_lista = ["Todos"] + list(df_calculado['Nome Exibição'].dropna().unique())
-                filtro_agente = st.selectbox("Mudar foco do Dashboard para um Operador:", agentes_lista)
-                df_view = df_calculado[df_calculado['Nome Exibição'] == filtro_agente] if filtro_agente != "Todos" else df_calculado.copy()
+                # FILTROS DE FOCO INDIVIDUAL (BUSCA DO DATAFRAME FILTRADO JÁ PELO BOTÃO)
+                st.markdown("### 👥 Escopo da Análise")
+                c_s1, c_s2 = st.columns(2)
+                with c_s1:
+                    agentes_lista = ["Todos"] + list(df_calculado['Nome Exibição'].dropna().unique())
+                    filtro_agente = st.selectbox("Selecionar foco nominal:", agentes_lista)
+                
+                # Geração da base final que vai desenhar os Cards de Destaque Gerais
+                df_final_escopo = df_calculado[df_calculado['Nome Exibição'] == filtro_agente] if filtro_agente != "Todos" else df_calculado.copy()
 
-                # --- CARDS GERAIS ---
-                if 'Total_Pesq_CSAT' in df_view.columns:
-                    tot_csat = df_view['Total_Pesq_CSAT'].sum()
-                    boas_csat = df_view['Boas_Pesq_CSAT'].sum()
+                # --- 💥 PROCESSAMENTO UNIFICADO DOS CARDS GERAIS DA TELA 💥 ---
+                if 'Total_Pesq_CSAT' in df_final_escopo.columns:
+                    tot_csat = df_final_escopo['Total_Pesq_CSAT'].sum()
+                    boas_csat = df_final_escopo['Boas_Pesq_CSAT'].sum()
                     v_csat = (boas_csat / tot_csat * 100) if tot_csat > 0 else 0.0
-                    tot_ir = df_view['Total_Pesq_IR'].sum()
-                    sim_ir = df_view['Sim_Pesq_IR'].sum()
+                    
+                    tot_ir = df_final_escopo['Total_Pesq_IR'].sum()
+                    sim_ir = df_final_escopo['Sim_Pesq_IR'].sum()
                     v_ir = (sim_ir / tot_ir * 100) if tot_ir > 0 else 0.0
-                    sub_csat = f"Base: {int(tot_csat)} pesq."
-                    sub_ir = f"Base: {int(tot_ir)} pesq."
+                    sub_csat = f"Amostra: {int(tot_csat)} pesq."
+                    sub_ir = f"Amostra: {int(tot_ir)} pesq."
                 else:
-                    v_csat = df_view['CSAT_Media'].mean()
-                    v_ir = df_view['IR_Percentual'].mean()
+                    v_csat = df_final_escopo['CSAT_Media'].mean() if not df_final_escopo.empty else 0.0
+                    v_ir = df_final_escopo['IR_Percentual'].mean() if not df_final_escopo.empty else 0.0
                     sub_csat = "Amostra Antiga"
                     sub_ir = "Amostra Antiga"
 
-                v_ade = df_view['Aderência (%)'].mean()
-                v_conf = df_view['Conformidade (%)'].mean()
+                v_ade = df_final_escopo['Aderência (%)'].mean() if not df_final_escopo.empty else 0.0
+                v_conf = df_final_escopo['Conformidade (%)'].mean() if not df_final_escopo.empty else 0.0
                 
-                total_rt_valido = df_view['RT geral valido'].sum()
-                if 'Taxa_Retencao_Original' in df_view.columns:
+                total_rt_valido = df_final_escopo['RT geral valido'].sum() if not df_final_escopo.empty else 0
+                if 'Taxa_Retencao_Original' in df_final_escopo.columns:
                     if filtro_agente == "Todos":
-                        col_total_nome = 'RT geral calculated' if 'RT geral calculated' in df_view.columns else 'RT geral calculado'
-                        total_calculado_equipe = df_view[col_total_nome].sum()
+                        col_total_nome = 'RT geral calculated' if 'RT geral calculated' in df_final_escopo.columns else 'RT geral calculado'
+                        total_calculado_equipe = df_final_escopo[col_total_nome].sum()
                         v_retencao = (total_rt_valido / total_calculado_equipe * 100) if total_calculado_equipe > 0 else 0.0
                     else:
-                        v_retencao = df_view['Taxa_Retencao_Original'].iloc[0]
+                        v_retencao = df_final_escopo['Taxa_Retencao_Original'].iloc[0] if not df_final_escopo.empty else 0.0
                     sub_ret = f"Válidas: {int(total_rt_valido)} retidos"
                 else:
                     v_retencao = 0.0
                     sub_ret = "Sem histórico"
 
                 v_cancelamento = 100 - v_retencao if v_retencao > 0 else 0.0
-                total_vol_chat = df_view['Vol. Chat'].sum()
-                tma_chat_medio = df_view['TMA Chat (Min)'].mean()
-                total_vol_voz = df_view['Vol. Voz'].sum()
-                tma_voz_medio = df_view['TMA Voz (Min)'].mean()
+                total_vol_chat = df_final_escopo['Vol. Chat'].sum()
+                tma_chat_medio = df_final_escopo['TMA Chat (Min)'].mean()
+                total_vol_voz = df_final_escopo['Vol. Voz'].sum()
+                tma_voz_medio = df_final_escopo['TMA Voz (Min)'].mean()
 
-                # CARDS
+                # EXIBIÇÃO EM CARDS 100% DINÂMICOS CONFORME OS FILTROS DA TELA
                 st.subheader(f"🎯 Métricas Consolidadas ({filtro_agente})")
                 c1, c2, c3, c4, c5 = st.columns(5)
                 with c1:
@@ -476,7 +483,7 @@ else:
                     indicador_grafico = st.selectbox("Selecione o Indicador para Analisar o Ranking de Oportunidades:", 
                                                     ["CSAT", "Índice IR", "Taxa de Retenção", "Aderência", "Conformidade", "TMA Chat", "TMA Voz"])
                     
-                    df_chart_base = df_view.dropna(subset=['Nome Exibição'])
+                    df_chart_base = df_final_escopo.dropna(subset=['Nome Exibição'])
                     
                     if indicador_grafico == "CSAT":
                         df_chart = df_chart_base.sort_values(by='CSAT_Agente (%)', ascending=True).head(12)
@@ -536,9 +543,9 @@ else:
                     st.plotly_chart(fig, use_container_width=True)
                     st.markdown("---")
 
-                # TABELA NOMINAL
+                # TABELA DE DETALHAMENTO NOMINAL COMPLETA
                 st.subheader("👥 Detalhamento Operacional por Colaborador")
-                colunas_tabela = ['Nome Exibição', 'Status' if 'Status' in df_view.columns else 'Nome Exibição', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Aderência (%)', 'Conformidade (%)', 'Vol. Chat', 'TMA Chat (Min)', 'Vol. Voz', 'TMA Voz (Min)', 'RT geral valido', '% Retenção', '% Cancelamento']
+                colunas_tabela = ['Nome Exibição', 'Status' if 'Status' in df_final_escopo.columns else 'Nome Exibição', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Aderência (%)', 'Conformidade (%)', 'Vol. Chat', 'TMA Chat (Min)', 'Vol. Voz', 'TMA Voz (Min)', 'RT geral valido', '% Retenção', '% Cancelamento']
                 colunas_tabela = list(dict.fromkeys(colunas_tabela))
                 
                 def estilizar_linhas_status(row):
@@ -548,7 +555,7 @@ else:
                     return [''] * len(row)
 
                 st.dataframe(
-                    df_view[colunas_tabela].style.apply(estilizar_linhas_status, axis=1).format({
+                    df_final_escopo[colunas_tabela].style.apply(estilizar_linhas_status, axis=1).format({
                         'CSAT_Agente (%)': '{:.1f}%', 'IR_Agente (%)': '{:.1f}%', 'Aderência (%)': '{:.1f}%',
                         'Conformidade (%)': '{:.1f}%', '% Retenção': '{:.2f}%', '% Cancelamento': '{:.2f}%',
                         'Vol. Chat': '{:,.0f}', 'TMA Chat (Min)': '{:.1f}m', 'Vol. Voz': '{:,.0f}',
@@ -599,3 +606,5 @@ else:
                     st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
                 with co4:
                     st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_RETENCAO:.0f}% | Cancelamento: {my_tx_canc:.1f}%</div></div>", unsafe_allow_html=True)
+            else:
+                st.info("Nenhum dado operacional associado ao seu perfil.")
