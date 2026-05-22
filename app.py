@@ -10,7 +10,7 @@ import time
 # ==========================================
 st.set_page_config(page_title="Sistema Operacional 360", page_icon="🎯", layout="wide")
 
-GESTOR_EMAIL = "admin@brisanet.com.br"
+GESTOR_EMAIL = "gestor"
 GESTOR_SENHA = "admin"
 SENHA_PADRAO_AGENTE = "1234" 
 
@@ -314,7 +314,7 @@ else:
                             
                             if suc_mega:
                                 st.cache_data.clear()
-                                st.success(f"Sucesso! Base Mestre calibrada para {mes_up}/{ano_up} com os dados estratégicos!")
+                                st.success(f"Sucesso! Base Mestre calibrada para {mes_up}/{ano_up}!")
                                 time.sleep(0.5)
                                 st.rerun()
                             else:
@@ -359,16 +359,9 @@ else:
                     sub_legenda_csat = "⚠️ Re-upload pendente"
                     sub_legenda_ir = "⚠️ Re-upload pendente"
 
-                # --- BLINDAGEM DA ADERÊNCIA E CONFORMIDADE TÉCNICA (IGNORA ZEROS SE FILTRADO POR 'TODOS') ---
-                if filtro_agente == "Todos":
-                    df_filtrado_ade = df_view[df_view['Aderência (%)'] > 0]
-                    v_ade = df_filtrado_ade['Aderência (%)'].mean() if not df_filtrado_ade.empty else 0.0
-                    
-                    df_filtrado_conf = df_view[df_view['Conformidade (%)'] > 0]
-                    v_conf = df_filtrado_conf['Conformidade (%)'].mean() if not df_filtrado_conf.empty else 0.0
-                else:
-                    v_ade = df_view['Aderência (%)'].mean()
-                    v_conf = df_view['Conformidade (%)'].mean()
+                # --- CONTABILIZAÇÃO HISTÓRICA DO GRUPO (INCLUINDO OS INTEGRANTES COM 0% - FALTAS) ---
+                v_ade = df_view['Aderência (%)'].mean() if not df_view.empty else 0.0
+                v_conf = df_view['Conformidade (%)'].mean() if not df_view.empty else 0.0
                 
                 # --- RETENÇÃO BRISANET ---
                 total_rt_valido = df_view['RT geral valido'].sum() if 'RT geral valido' in df_view.columns else 0
@@ -406,7 +399,7 @@ else:
                 with c4:
                     st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>📉 Taxa Cancelamento</div><div class='kpi-value'>{v_cancelamento:.2f}%</div><div style='font-size:11px;color:#dc3545;'>Complemento Real</div></div>", unsafe_allow_html=True)
                 with c5:
-                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>⏱️ Aderência Real</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#ba55d3;'>Excluindo Escala Zerada</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>⏱️ Aderência Geral</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Penalizando Absenteísmo</div></div>", unsafe_allow_html=True)
 
                 # === FILEIRA 2 DE CARDS ===
                 st.subheader("📊 Volumetria e Tempo de Atendimento (TMA)")
