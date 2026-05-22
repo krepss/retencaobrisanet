@@ -200,7 +200,7 @@ else:
         # ABA 1: GESTÃO DA EQUIPE
         with aba_equipe:
             st.header("👥 Gestão de Usuários e Acessos")
-            st.info("💡 **Dica de Gestão:** Defina aqui quem está `Ativo`, `Férias` ou `Afastado`. Quem estiver fora sumirá dos Cards de médias automáticos!")
+            st.info("💡 **Dica de Gestão:** Defina aqui quem está `Ativo`, `Férias` ou `Afastado`. Quem estiver fora sumirá dos Cards de médias operacionais automáticos!")
             try:
                 df_users_atual = ler_csv_via_api_github("dados_usuarios.csv")
                 if 'Status' not in df_users_atual.columns:
@@ -334,25 +334,26 @@ else:
         with aba_dashboard:
             if not base_mestre_existe:
                 st.info("👋 **Bem-vindo ao Sistema!**")
-                st.warning("📢 A base mestre ainda não foi integrada ou está inacessível.")
+                st.warning("📢 A base mestre ainda não foi integrada ou o ficheiro está inacessível.")
             elif not dados_carregados:
                 st.warning(f"⚠️ {erro_dados}")
             else:
                 st.title(f"📈 Dashboard Operacional ({mes_view}/{ano_view})")
                 
-                # --- NOVO FILTRO ESTRUTURAL DE ATIVOS VS TODOS ---
+                # --- FILTRO ESTRUTURAL DE ATIVOS VS TODOS ---
                 st.markdown("### 🔍 Filtros de Visualização")
                 c_f1, c_f2 = st.columns(2)
                 
                 with c_f1:
-                    # Permite alternar a visão da tela inteira entre a equipe inteira ou apenas os produtivos ativos
                     modo_visao = st.radio("Filtro de Status Operacional:", ["Mostrar Apenas Ativos", "Mostrar Todos (Incluir Férias/Afastados)"], horizontal=True)
                 
-                # Aplica o filtro de status na base de dados antes de gerar os Cards e a Tabela
+                # Aplica a triagem de status
                 if 'Status' in df_periodo.columns and modo_visao == "Mostrar Apenas Ativos":
                     df_filtrado_status = df_periodo[df_periodo['Status'].fillna('Ativo').str.strip().str.title() == 'Ativo']
+                    sub_status_text = "Apenas Quadro Ativo"
                 else:
                     df_filtrado_status = df_periodo.copy()
+                    sub_status_text = "Todo o Quadro Nominal"
 
                 with c_f2:
                     agentes = ["Todos"] + list(df_filtrado_status['Nome Exibição'].dropna().unique())
@@ -406,7 +407,7 @@ else:
                 total_vol_voz = df_view['Vol. Voz'].sum()
                 tma_voz_medio = df_view['TMA Voz (Min)'].mean()
 
-                # === FILEIRA 1 DE CARDS ===
+                # === FILEIRA 1 DE CARDS (REFORMULADA COM OS 5 CARDS NA ORDEM CERTA) ===
                 st.subheader("🎯 Principais KPIs de Qualidade")
                 c1, c2, c3, c4, c5 = st.columns(5)
                 
@@ -419,24 +420,26 @@ else:
                 with c4:
                     st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>📉 Taxa Cancelamento</div><div class='kpi-value'>{v_cancelamento:.2f}%</div><div style='font-size:11px;color:#dc3545;'>Complemento Real</div></div>", unsafe_allow_html=True)
                 with c5:
-                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>⏱️ Aderência Geral</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Base Atual Filtrada</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>🛡️ Conformidade Geral</div><div class='kpi-value'>{v_conf:.1f}%</div><div style='font-size:11px;color:#9932cc;'>{sub_status_text}</div></div>", unsafe_allow_html=True)
 
-                # === FILEIRA 2 DE CARDS ===
+                # === FILEIRA 2 DE CARDS (ADICIONADA ADERÊNCIA NO INÍCIO) ===
                 st.subheader("📊 Volumetria e Tempo de Atendimento (TMA)")
-                cx1, cx2, cx3, cx4 = st.columns(4)
+                cx0, cx1, cx2, cx3, cx4 = st.columns(5)
                 
+                with cx0:
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>⏱️ Aderência Geral</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#ba55d3;'>{sub_status_text}</div></div>", unsafe_allow_html=True)
                 with cx1:
                     st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>💬 Vol. Total Chat</div><div class='kpi-value'>{int(total_vol_chat):,}</div></div>", unsafe_allow_html=True)
                 with cx2:
-                    st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>⏳ TMA Médio Chat</div><div class='kpi-value'>{tma_chat_medio:.1f} min</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>⏳ TMA Chat</div><div class='kpi-value'>{tma_chat_medio:.1f} min</div></div>", unsafe_allow_html=True)
                 with cx3:
                     st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>📞 Vol. Total Voz</div><div class='kpi-value'>{int(total_vol_voz):,}</div></div>", unsafe_allow_html=True)
                 with cx4:
-                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>⏳ TMA Médio Voz</div><div class='kpi-value'>{tma_voz_medio:.1f} min</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>⏳ TMA Voz</div><div class='kpi-value'>{tma_voz_medio:.1f} min</div></div>", unsafe_allow_html=True)
 
                 st.markdown("---")
                 
-                # --- REFORMULAÇÃO DA TABELA NOMINAL COMPLETA ---
+                # Tabela Nominal Completa
                 st.subheader("👥 Visão Detalhada por Agente")
                 df_tabela = df_view.copy()
                 
@@ -453,7 +456,6 @@ else:
                 colunas_tabela = ['Nome Exibição', 'Status' if 'Status' in df_tabela.columns else 'Nome Exibição', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Aderência (%)', 'Conformidade (%)', 'Vol. Chat', 'TMA Chat (Min)', 'Vol. Voz', 'TMA Voz (Min)', 'RT geral valido', '% Retenção', '% Cancelamento']
                 colunas_tabela = list(dict.fromkeys(colunas_tabela))
                 
-                # Formatação condicional: deixa as linhas de quem não está ativo cinzas (esmaecidas)
                 def estilizar_linhas_status(row):
                     status_val = str(row['Status']).strip().lower() if 'Status' in row else 'ativo'
                     if status_val != 'ativo':
