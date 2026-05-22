@@ -55,6 +55,7 @@ st.markdown("""
             color: #c53030;
             margin-bottom: 8px;
             font-size: 13px;
+            line-height: 1.4;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -228,7 +229,7 @@ else:
                         csv_usr = df_users_editado.to_csv(index=False)
                         enviar_para_github("dados_usuarios.csv", csv_usr)
                         st.cache_data.clear()
-                        st.success("Lista de usuários e status atualizados com sucesso!")
+                        st.success("Status salvos com sucesso!")
                         time.sleep(0.5)
                         st.rerun()
             except Exception:
@@ -334,9 +335,9 @@ else:
             elif not dados_carregados:
                 st.warning(f"⚠️ {erro_dados}")
             else:
-                st.title(f" Painel Analítico de Controle Operacional ({mes_view}/{ano_view})")
+                st.title(f"📊 Painel Analítico de Controle Operacional ({mes_view}/{ano_view})")
                 
-                # SELETOR DE FILTRO DE QUADRO ATIVO
+                # SELETOR DE QUADRO ATIVO
                 modo_visao = st.radio("Filtro de Status de Equipe:", ["Mostrar Apenas Ativos", "Mostrar Todos (Incluir Férias/Afastados)"], horizontal=True)
                 
                 if 'Status' in df_periodo.columns and modo_visao == "Mostrar Apenas Ativos":
@@ -344,7 +345,7 @@ else:
                 else:
                     df_filtrado_status = df_periodo.copy()
 
-                # Injeta colunas calculadas nominais individuais
+                # Injeta colunas individuais tratadas
                 df_calculado = df_filtrado_status.copy()
                 if 'Total_Pesq_CSAT' in df_calculado.columns:
                     df_calculado['CSAT_Agente (%)'] = (df_calculado['Boas_Pesq_CSAT'] / df_calculado['Total_Pesq_CSAT'] * 100).fillna(0)
@@ -357,47 +358,53 @@ else:
                 df_calculado['% Cancelamento'] = df_calculado.apply(lambda r: 100 - r['% Retenção'] if r['% Retenção'] > 0 else 0.0, axis=1)
 
                 # ==========================================
-                # 🚨 CENTRAL DE AUDITORIA DE METAS (DETRATORES)
+                # 🚨 NOVO DIAGNÓSTICO REFORMULADO (EXPANDERS RETRÁTEIS COMPACTOS)
                 # ==========================================
-                st.subheader("🚨 Diagnóstico de Desvios das Metas Contratuais")
+                st.subheader("🚨 Auditoria de Desvios de Metas (Quadro Ativo)")
+                
                 df_ativos_alertas = df_calculado[df_calculado['Status'].fillna('Ativo').str.strip().str.title() == 'Ativo'] if 'Status' in df_calculado.columns else df_calculado.copy()
                 
+                detratores_qualidade = df_ativos_alertas[(df_ativos_alertas['CSAT_Agente (%)'] < META_CSAT) | (df_ativos_alertas['IR_Agente (%)'] < META_IR)]
+                detratores_retencao = df_ativos_alertas[df_ativos_alertas['% Retenção'] < META_RETENCAO]
+                detratores_processo = df_ativos_alertas[(df_ativos_alertas['Aderência (%)'] < META_ADERENCIA) | (df_ativos_alertas['Conformidade (%)'] < META_CONFORMIDADE)]
+                
                 col_alerta_1, col_alerta_2, col_alerta_3 = st.columns(3)
+                
                 with col_alerta_1:
-                    st.markdown(f"##### 🔻 Fora da Meta de Qualidade (CSAT < {META_CSAT:.0f}% ou IR < {META_IR:.0f}%)")
-                    detratores_qualidade = df_ativos_alertas[(df_ativos_alertas['CSAT_Agente (%)'] < META_CSAT) | (df_ativos_alertas['IR_Agente (%)'] < META_IR)]
-                    if detratores_qualidade.empty:
-                        st.success("✅ Toda a equipe ativa está na meta de Qualidade!")
-                    else:
-                        for _, row in detratores_qualidade.iterrows():
-                            st.markdown(f"<div class='detractor-box'>⚠️ <b>{row['Nome Exibição']}</b> | CSAT: {row['CSAT_Agente (%)']:.1f}% | IR: {row['IR_Agente (%)']:.1f}%</div>", unsafe_allow_html=True)
+                    label_q = f"🔻 Qualidade: {len(detratores_qualidade)} abaixo da meta" if not detratores_qualidade.empty else "✅ Qualidade: 100% na meta"
+                    with st.expander(label_q, expanded=False):
+                        if detratores_qualidade.empty:
+                            st.write("Toda a equipe ativa está cumprindo as metas contratuais de CSAT e IR.")
+                        else:
+                            for _, row in detratores_qualidade.iterrows():
+                                st.markdown(f"<div class='detractor-box'>⚠️ <b>{row['Nome Exibição']}</b><br>CSAT: {row['CSAT_Agente (%)']:.1f}% / IR: {row['IR_Agente (%)']:.1f}%</div>", unsafe_allow_html=True)
 
                 with col_alerta_2:
-                    st.markdown(f"##### 📉 Fora da Meta de Retenção (Taxa < {META_RETENCAO:.0f}%)")
-                    detratores_retencao = df_ativos_alertas[df_ativos_alertas['% Retenção'] < META_RETENCAO]
-                    if detratores_retencao.empty:
-                        st.success("✅ Toda a equipe ativa está na meta de Retenção!")
-                    else:
-                        for _, row in detratores_retencao.iterrows():
-                            st.markdown(f"<div class='detractor-box' style='background-color:#fffaf0;border-color:#fbd38d;color:#dd6b20;'>📉 <b>{row['Nome Exibição']}</b> | Retenção: {row['% Retenção']:.2f}%</div>", unsafe_allow_html=True)
+                    label_r = f"📉 Retenção: {len(detratores_retencao)} abaixo da meta" if not detratores_retencao.empty else "✅ Retenção: 100% na meta"
+                    with st.expander(label_r, expanded=False):
+                        if detratores_retencao.empty:
+                            st.write("Toda a equipe ativa está cumprindo a meta contratual de Retenção.")
+                        else:
+                            for _, row in detratores_retencao.iterrows():
+                                st.markdown(f"<div class='detractor-box' style='background-color:#fffaf0;border-color:#fbd38d;color:#dd6b20;'>📉 <b>{row['Nome Exibição']}</b><br>Retenção Oficial: {row['% Retenção']:.2f}%</div>", unsafe_allow_html=True)
 
                 with col_alerta_3:
-                    st.markdown(f"##### ⏱️ Fora da Meta de Processos (Aderência < {META_ADERENCIA:.0f}% ou Conf. < {META_CONFORMIDADE:.0f}%)")
-                    detratores_processo = df_ativos_alertas[(df_ativos_alertas['Aderência (%)'] < META_ADERENCIA) | (df_ativos_alertas['Conformidade (%)'] < META_CONFORMIDADE)]
-                    if detratores_processo.empty:
-                        st.success("✅ Toda a equipe ativa cumpre os prazos e normas!")
-                    else:
-                        for _, row in detratores_processo.iterrows():
-                            st.markdown(f"<div class='detractor-box' style='background-color:#fffaf5;border-color:#feb2b2;color:#c53030;'>⏱️ <b>{row['Nome Exibição']}</b> | Ade: {row['Aderência (%)']:.1f}% | Conf: {row['Conformidade (%)']:.1f}%</div>", unsafe_allow_html=True)
+                    label_p = f"⏱️ Processos: {len(detratores_processo)} abaixo da meta" if not detratores_processo.empty else "✅ Processos: 100% na meta"
+                    with st.expander(label_p, expanded=False):
+                        if detratores_processo.empty:
+                            st.write("Toda a equipe ativa cumpre os prazos de Aderência e Conformidade.")
+                        else:
+                            for _, row in detratores_processo.iterrows():
+                                st.markdown(f"<div class='detractor-box' style='background-color:#fffaf5;border-color:#feb2b2;color:#c53030;'>⏱️ <b>{row['Nome Exibição']}</b><br>Ade: {row['Aderência (%)']:.1f}% / Conf: {row['Conformidade (%)']:.1f}%</div>", unsafe_allow_html=True)
 
                 st.markdown("---")
 
-                # FILTROS DE FOCO
+                # FILTROS DE FOCO INDIVIDUAL
                 agentes_lista = ["Todos"] + list(df_calculado['Nome Exibição'].dropna().unique())
                 filtro_agente = st.selectbox("Mudar foco do Dashboard para um Operador:", agentes_lista)
                 df_view = df_calculado[df_calculado['Nome Exibição'] == filtro_agente] if filtro_agente != "Todos" else df_calculado.copy()
 
-                # --- PROCESSAMENTO RESTRITO DOS CARDS ---
+                # --- CARDS GERAIS ---
                 if 'Total_Pesq_CSAT' in df_view.columns:
                     tot_csat = df_view['Total_Pesq_CSAT'].sum()
                     boas_csat = df_view['Boas_Pesq_CSAT'].sum()
@@ -405,8 +412,8 @@ else:
                     tot_ir = df_view['Total_Pesq_IR'].sum()
                     sim_ir = df_view['Sim_Pesq_IR'].sum()
                     v_ir = (sim_ir / tot_ir * 100) if tot_ir > 0 else 0.0
-                    sub_csat = f"Amostra: {int(tot_csat)} pesq."
-                    sub_ir = f"Amostra: {int(tot_ir)} pesq."
+                    sub_csat = f"Base: {int(tot_csat)} pesq."
+                    sub_ir = f"Base: {int(tot_ir)} pesq."
                 else:
                     v_csat = df_view['CSAT_Media'].mean()
                     v_ir = df_view['IR_Percentual'].mean()
@@ -435,23 +442,23 @@ else:
                 total_vol_voz = df_view['Vol. Voz'].sum()
                 tma_voz_medio = df_view['TMA Voz (Min)'].mean()
 
-                # RENDEREZADOR DE CARDS DE METAS FIXED
+                # RENDEREZADOR DE CARDS
                 st.subheader(f"🎯 Métricas Consolidadas ({filtro_agente})")
                 c1, c2, c3, c4, c5 = st.columns(5)
                 with c1:
-                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>⭐ CSAT Ponderado</div><div class='kpi-value'>{v_csat:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta Oficial: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>⭐ CSAT Ponderado</div><div class='kpi-value'>{v_csat:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
                 with c2:
-                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>🎯 Índice IR</div><div class='kpi-value'>{v_ir:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta Oficial: {META_IR:.0f}%</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>🎯 Índice IR</div><div class='kpi-value'>{v_ir:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_IR:.0f}%</div></div>", unsafe_allow_html=True)
                 with c3:
-                    st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>📈 Taxa Retenção</div><div class='kpi-value'>{v_retencao:.2f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta Oficial: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>📈 Taxa Retenção</div><div class='kpi-value'>{v_retencao:.2f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
                 with c4:
-                    st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>📉 Taxa Cancelamento</div><div class='kpi-value'>{v_cancelamento:.2f}%</div><div style='font-size:11px;color:#dc3545;'>Complemento Real</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>📉 Taxa Cancelamento</div><div class='kpi-value'>{v_cancelamento:.2f}%</div><div style='font-size:11px;color:#dc3545;'>Complementar</div></div>", unsafe_allow_html=True)
                 with c5:
-                    st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>🛡️ Conformidade Geral</div><div class='kpi-value'>{v_conf:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta Oficial: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>🛡️ Conformidade</div><div class='kpi-value'>{v_conf:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
 
                 cx0, cx1, cx2, cx3, cx4 = st.columns(5)
                 with cx0:
-                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>⏱️ Aderência Geral</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta Oficial: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>⏱️ Aderência Geral</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
                 with cx1:
                     st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>💬 Vol. Total Chat</div><div class='kpi-value'>{int(total_vol_chat):,}</div></div>", unsafe_allow_html=True)
                 with cx2:
@@ -463,23 +470,18 @@ else:
 
                 st.markdown("---")
 
-                # ==========================================
-                # 📊 SEÇÃO DO AUDITOR INTELIGENTE: RANKING DE DETRATORES DINÂMICO
-                # ==========================================
+                # AUDITORIA GRÁFICA DINÂMICA
                 if filtro_agente == "Todos":
                     st.subheader("📊 Motor de Auditoria Gráfica - Foco nos Detratores e Gargalos")
-                    st.markdown("Escolha qualquer indicador abaixo para listar o ranking das piores performances do mês e tratar com feedback direto.")
-                    
-                    indicador_grafico = st.selectbox("Selecione o Indicador para Analisar:", 
+                    indicador_grafico = st.selectbox("Selecione o Indicador para Analisar o Ranking de Oportunidades:", 
                                                     ["CSAT", "Índice IR", "Taxa de Retenção", "Aderência", "Conformidade", "TMA Chat", "TMA Voz"])
                     
-                    # Filtra apenas operadores que trabalharam para não sujar o gráfico com quem tem 0% por erro de dados
                     df_chart_base = df_view.dropna(subset=['Nome Exibição'])
                     
                     if indicador_grafico == "CSAT":
                         df_chart = df_chart_base.sort_values(by='CSAT_Agente (%)', ascending=True).head(12)
                         fig = px.bar(df_chart, x='CSAT_Agente (%)', y='Nome Exibição', orientation='h',
-                                     title=f"⭐ Detratores CSAT (Abaixo da Meta de {META_CSAT:.0f}%)",
+                                     title=f"⭐ Ranking Crescente CSAT (Meta Contratual: {META_CSAT:.0f}%)",
                                      labels={'CSAT_Agente (%)': 'CSAT (%)', 'Nome Exibição': 'Operador'},
                                      color='CSAT_Agente (%)', color_continuous_scale='Reds_r')
                         fig.add_vline(x=META_CSAT, line_dash="dash", line_color="green", annotation_text=f"Meta {META_CSAT:.0f}%", annotation_position="top right")
@@ -487,7 +489,7 @@ else:
                     elif indicador_grafico == "Índice IR":
                         df_chart = df_chart_base.sort_values(by='IR_Agente (%)', ascending=True).head(12)
                         fig = px.bar(df_chart, x='IR_Agente (%)', y='Nome Exibição', orientation='h',
-                                     title=f"🎯 Detratores IR (Abaixo da Meta de {META_IR:.0f}%)",
+                                     title=f"🎯 Ranking Crescente IR (Meta Contratual: {META_IR:.0f}%)",
                                      labels={'IR_Agente (%)': 'Índice IR (%)', 'Nome Exibição': 'Operador'},
                                      color='IR_Agente (%)', color_continuous_scale='Reds_r')
                         fig.add_vline(x=META_IR, line_dash="dash", line_color="green", annotation_text=f"Meta {META_IR:.0f}%", annotation_position="top right")
@@ -495,7 +497,7 @@ else:
                     elif indicador_grafico == "Taxa de Retenção":
                         df_chart = df_chart_base.sort_values(by='% Retenção', ascending=True).head(12)
                         fig = px.bar(df_chart, x='% Retenção', y='Nome Exibição', orientation='h',
-                                     title=f"📈 Detratores de Retenção (Abaixo da Meta de {META_RETENCAO:.0f}%)",
+                                     title=f"📈 Ranking Crescente de Retenção (Meta Contratual: {META_RETENCAO:.0f}%)",
                                      labels={'% Retenção': 'Taxa de Retenção (%)', 'Nome Exibição': 'Operador'},
                                      color='% Retenção', color_continuous_scale='Reds_r')
                         fig.add_vline(x=META_RETENCAO, line_dash="dash", line_color="green", annotation_text=f"Meta {META_RETENCAO:.0f}%", annotation_position="top right")
@@ -503,7 +505,7 @@ else:
                     elif indicador_grafico == "Aderência":
                         df_chart = df_chart_base.sort_values(by='Aderência (%)', ascending=True).head(12)
                         fig = px.bar(df_chart, x='Aderência (%)', y='Nome Exibição', orientation='h',
-                                     title=f"⏱️ Detratores de Aderência (Abaixo da Meta de {META_ADERENCIA:.0f}%)",
+                                     title=f"⏱️ Ranking Crescente de Aderência (Meta Contratual: {META_ADERENCIA:.0f}%)",
                                      labels={'Aderência (%)': 'Aderência (%)', 'Nome Exibição': 'Operador'},
                                      color='Aderência (%)', color_continuous_scale='Reds_r')
                         fig.add_vline(x=META_ADERENCIA, line_dash="dash", line_color="green", annotation_text=f"Meta {META_ADERENCIA:.0f}%", annotation_position="top right")
@@ -511,7 +513,7 @@ else:
                     elif indicador_grafico == "Conformidade":
                         df_chart = df_chart_base.sort_values(by='Conformidade (%)', ascending=True).head(12)
                         fig = px.bar(df_chart, x='Conformidade (%)', y='Nome Exibição', orientation='h',
-                                     title=f"🛡️ Detratores de Conformidade (Abaixo da Meta de {META_CONFORMIDADE:.0f}%)",
+                                     title=f"🛡️ Ranking Crescente de Conformidade (Meta Contratual: {META_CONFORMIDADE:.0f}%)",
                                      labels={'Conformidade (%)': 'Conformidade (%)', 'Nome Exibição': 'Operador'},
                                      color='Conformidade (%)', color_continuous_scale='Reds_r')
                         fig.add_vline(x=META_CONFORMIDADE, line_dash="dash", line_color="green", annotation_text=f"Meta {META_CONFORMIDADE:.0f}%", annotation_position="top right")
@@ -519,15 +521,15 @@ else:
                     elif indicador_grafico == "TMA Chat":
                         df_chart = df_chart_base.sort_values(by='TMA Chat (Min)', ascending=False).head(12)
                         fig = px.bar(df_chart, x='TMA Chat (Min)', y='Nome Exibição', orientation='h',
-                                     title="⏳ Gargalos de Tempo - Maiores TMAs Chat (Mais Lentos)",
-                                     labels={'TMA Chat (Min)': 'Minutos por Chat', 'Nome Exibição': 'Operador'},
+                                     title="⏳ Maiores TMAs Chat - Gargalos de Tempo",
+                                     labels={'TMA Chat (Min)': 'Minutos', 'Nome Exibição': 'Operador'},
                                      color='TMA Chat (Min)', color_continuous_scale='Oranges')
                     
                     elif indicador_grafico == "TMA Voz":
                         df_chart = df_chart_base.sort_values(by='TMA Voz (Min)', ascending=False).head(12)
                         fig = px.bar(df_chart, x='TMA Voz (Min)', y='Nome Exibição', orientation='h',
-                                     title="⏳ Gargalos de Tempo - Maiores TMAs Voz (Mais Lentos)",
-                                     labels={'TMA Voz (Min)': 'Minutos por Chamada', 'Nome Exibição': 'Operador'},
+                                     title="⏳ Maiores TMAs Voz - Gargalos de Tempo",
+                                     labels={'TMA Voz (Min)': 'Minutos', 'Nome Exibição': 'Operador'},
                                      color='TMA Voz (Min)', color_continuous_scale='Oranges')
                     
                     fig.update_layout(yaxis={'categoryorder': 'total ascending' if indicador_grafico not in ["TMA Chat", "TMA Voz"] else 'total descending'}, coloraxis_showscale=False)
