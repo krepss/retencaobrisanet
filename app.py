@@ -10,7 +10,7 @@ import time
 # ==========================================
 st.set_page_config(page_title="Sistema Operacional 360", page_icon="🎯", layout="wide")
 
-GESTOR_EMAIL = "gestor"
+GESTOR_EMAIL = "gestao"
 GESTOR_SENHA = "admin"
 SENHA_PADRAO_AGENTE = "1234" 
 
@@ -184,6 +184,7 @@ else:
 
     base_mestre_existe = True
     erro_dados = ""
+    
     try:
         df_completo = carregar_dados_mestre_seguro()
         df_periodo = df_completo[(df_completo['text_mes'].str.lower() == mes_view.lower()) & (df_completo['text_ano'] == str(ano_view))]
@@ -198,10 +199,9 @@ else:
     if st.session_state.perfil == "Gestor":
         aba_dashboard, aba_upload, aba_equipe = st.tabs(["📊 Dashboard de Indicadores", "⚙️ Consolidação (Mensal)", "👥 Gestão da Equipe"])
         
-        # ABA GESTÃO DA EQUIPE E ESCALA CHRONOLÓGICA DE FÉRIAS
+        # ABA GESTÃO DA EQUIPE
         with aba_equipe:
             st.header("👥 Gestão de Cadastros e Escala de Férias")
-            
             c_eq1, c_eq2 = st.columns([3, 2])
             with c_eq1:
                 st.subheader("Ficha de Cadastro de Usuários")
@@ -235,24 +235,36 @@ else:
         with aba_upload:
             st.header("⚙️ Central de Consolidação de Relatórios")
             arquivos_carregados = st.file_uploader("Arraste e solte os 5 arquivos CSV aqui de uma vez", type=["csv"], accept_multiple_files=True)
-            relatorios_identificados = {"Aderência": None, "Pesquisa (CSAT/IR)": None, "Chat": None, "Voz": None, "Retenção": None}
+            
+            relatorios_identificados = {
+                "Aderência e Conformidade": None, 
+                "Pesquisa (CSAT/IR)": None, 
+                "Chat": None, 
+                "Voz": None, 
+                "Retenção": None
+            }
+            
             if arquivos_carregados:
                 for arquivo in arquivos_carregados:
                     try:
                         df_header = pd.read_csv(arquivo, nrows=0)
                         cols = [c.strip() for c in df_header.columns]
                         arquivo.seek(0)
-                        if 'Aderência (%)' in cols and 'Agente' in cols: relatorios_identificados["Aderência"] = arquivo
-                        elif 'CSAT' in cols and 'Atendente' in cols: relatorios_identificados["Pesquisa (CSAT/IR)"] = arquivo
+                        
+                        if 'Aderência (%)' in cols and 'Conformidade (%)' in cols and 'Agente' in cols: 
+                            relatorios_identificados["Aderência e Conformidade"] = arquivo
+                        elif 'CSAT' in cols and 'Atendente' in cols: 
+                            relatorios_identificados["Pesquisa (CSAT/IR)"] = arquivo
                         elif 'Nome do agente' in cols and 'Atendidas' in cols:
                             if "chat" in arquivo.name.lower(): relatorios_identificados["Chat"] = arquivo
                             else: relatorios_identificados["Voz"] = arquivo
-                        elif 'responsavel' in cols and '% de retenção' in cols: relatorios_identificados["Retenção"] = arquivo
+                        elif 'responsavel' in cols and '% de retenção' in cols: 
+                            relatorios_identificados["Retenção"] = arquivo
                     except Exception: pass
 
             st.markdown("### 📋 Status da Validação")
             c_chk1, c_chk2, c_chk3, c_chk4, c_chk5 = st.columns(5)
-            with c_chk1: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Aderência'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>1. Aderência</b></div>", unsafe_allow_html=True)
+            with c_chk1: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Aderência e Conformidade'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>1. Aderência & Conformidade</b></div>", unsafe_allow_html=True)
             with c_chk2: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Pesquisa (CSAT/IR)'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>2. Pesquisas</b></div>", unsafe_allow_html=True)
             with c_chk3: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Chat'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>3. Chat</b></div>", unsafe_allow_html=True)
             with c_chk4: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Voz'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>4. Voz</b></div>", unsafe_allow_html=True)
@@ -261,7 +273,7 @@ else:
             if all(relatorios_identificados.values()) and st.button("🚀 Processar e Atualizar Base Mestre AGORA", type="primary", use_container_width=True):
                 with st.spinner("Consolidando..."):
                     try:
-                        df_perf = pd.read_csv(relatorios_identificados["Aderência"])
+                        df_perf = pd.read_csv(relatorios_identificados["Aderência e Conformidade"])
                         df_ret = pd.read_csv(relatorios_identificados["Retenção"])
                         df_chat = pd.read_csv(relatorios_identificados["Chat"])
                         df_voz = pd.read_csv(relatorios_identificados["Voz"])
@@ -272,6 +284,7 @@ else:
                         df_perf['Conformidade (%)'] = df_perf['Conformidade (%)'].apply(limpar_porcentagem)
                         df_perf['Chave_Nome'] = df_perf['Agente'].astype(str).str.strip().str.upper()
                         df_users['Chave_Nome'] = df_users['Nome'].astype(str).str.strip().str.upper()
+                        
                         df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
                         df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
@@ -302,43 +315,32 @@ else:
                         
                         enviar_para_github("dados_consolidados_master.csv", df_novo.to_csv(index=False))
                         st.cache_data.clear()
-                        st.success("Processado!")
+                        st.success("Malha atualizada com sucesso!")
                         time.sleep(0.5)
                         st.rerun()
                     except Exception as e: st.error(f"Erro: {e}")
 
-        # ABA DASHBOARD (CRUZAMENTO AUTOMÁTICO CHRONOLÓGICO DE FÉRIAS)
+        # ABA DASHBOARD ANALÍTICO
         with aba_dashboard:
             if not base_mestre_existe: st.warning("📢 Base mestre indisponível.")
             elif not dados_carregados: st.warning(f"⚠️ {erro_dados}")
             else:
-                # Carrega dinamicamente a tabela de férias salva no Git para cruzar com o mês ativo da tela
                 try:
                     df_escala_ferias = ler_csv_via_api_github("escala_ferias.csv")
                     df_escala_ferias['Operador_Chave'] = df_escala_ferias['Operador'].astype(str).str.strip().str.upper()
                     df_escala_ferias['Mês_Chave'] = df_escala_ferias['Mês Férias'].astype(str).str.strip().str.lower()
                     df_escala_ferias['Ano_Chave'] = df_escala_ferias['Ano Férias'].astype(str).str.strip()
-                    
-                    # Filtra quem está listado de férias EXATAMENTE neste mês e ano selecionados na barra lateral
-                    lista_nomes_ferias = df_escala_ferias[
-                        (df_escala_ferias['Mês_Chave'] == mes_view.lower()) & 
-                        (df_escala_ferias['Ano_Chave'] == str(ano_view))
-                    ]['Operador_Chave'].tolist()
+                    lista_nomes_ferias = df_escala_ferias[(df_escala_ferias['Mês_Chave'] == mes_view.lower()) & (df_escala_ferias['Ano_Chave'] == str(ano_view))]['Operador_Chave'].tolist()
                 except Exception:
                     lista_nomes_ferias = []
 
-                # Mapeia dinamicamente o status de cada operador com base no cruzamento cronológico
                 df_periodo_mapeado = df_periodo.copy()
-                df_periodo_mapeado['Status_Dinamico'] = df_periodo_mapeado['Chave_Nome'].apply(
-                    lambda x: 'Férias' if x in lista_nomes_ferias else 'Ativo'
-                )
+                df_periodo_mapeado['Status_Dinamico'] = df_periodo_mapeado['Chave_Nome'].apply(lambda x: 'Férias' if x in lista_nomes_ferias else 'Ativo')
 
                 modo_visao = st.radio("Filtro de Quadro Operacional:", ["Mostrar Apenas Ativos", "Mostrar Todos (Incluir Férias do Período)"], horizontal=True)
                 
-                if modo_visao == "Mostrar Apenas Ativos":
-                    df_calculado = df_periodo_mapeado[df_periodo_mapeado['Status_Dinamico'] == 'Ativo'].copy()
-                else:
-                    df_calculado = df_periodo_mapeado.copy()
+                if modo_visao == "Mostrar Apenas Ativos": df_calculado = df_periodo_mapeado[df_periodo_mapeado['Status_Dinamico'] == 'Ativo'].copy()
+                else: df_calculado = df_periodo_mapeado.copy()
 
                 if 'Total_Pesq_CSAT' in df_calculado.columns:
                     df_calculado['CSAT_Agente (%)'] = (df_calculado['Boas_Pesq_CSAT'] / df_calculado['Total_Pesq_CSAT'] * 100).fillna(0)
@@ -346,39 +348,47 @@ else:
                 else:
                     df_calculado['CSAT_Agente (%)'] = df_calculado['CSAT_Media'].fillna(0)
                     df_calculado['IR_Agente (%)'] = df_calculado['IR_Percentual'].fillna(0)
+                
                 df_calculado['% Retenção'] = df_calculado['Taxa_Retencao_Original'].fillna(0) if 'Taxa_Retencao_Original' in df_calculado.columns else 0.0
                 df_calculado['% Cancelamento'] = df_calculado.apply(lambda r: 100 - r['% Retenção'] if r['% Retenção'] > 0 else 0.0, axis=1)
 
+                # ==========================================
+                # 🚨 AUDITORIA DESMEMBRADA E AJUSTADA AOS CONCEITOS WFM
+                # ==========================================
                 st.subheader(f"🚨 Auditoria de Desvios de Metas Contratuais ({mes_view}/{ano_view})")
                 df_ativos_alertas = df_calculado[df_calculado['Status_Dinamico'] == 'Ativo']
+                
                 lista_detratores_csat = df_ativos_alertas[df_ativos_alertas['CSAT_Agente (%)'] < META_CSAT]
                 lista_detratores_ir = df_ativos_alertas[df_ativos_alertas['IR_Agente (%)'] < META_IR]
                 detratores_retencao = df_ativos_alertas[df_ativos_alertas['% Retenção'] < META_RETENCAO]
-                lista_detratores_ade = df_ativos_alertas[df_ativos_alertas['Aderência (%)'] < META_ADERENCIA]
                 lista_detratores_conf = df_ativos_alertas[df_ativos_alertas['Conformidade (%)'] < META_CONFORMIDADE]
+                lista_detratores_ade = df_ativos_alertas[df_ativos_alertas['Aderência (%)'] < META_ADERENCIA]
                 
                 total_desvios_qualidade = len(lista_detratores_csat) + len(lista_detratores_ir)
-                total_desvios_processo = len(lista_detratores_ade) + len(lista_detratores_conf)
 
-                col_alerta_1, col_alerta_2, col_alerta_3 = st.columns(3)
-                with col_alerta_1:
-                    with st.expander(f"🔻 Qualidade: {total_desvios_qualidade} desvios na seleção"):
+                c_a1, c_a2, c_a3, c_a4 = st.columns(4)
+                with c_a1:
+                    with st.expander(f"⭐ Qualidade: {total_desvios_qualidade} desvios"):
                         for _, row in lista_detratores_csat.iterrows(): st.markdown(f"<div class='detractor-box'>⭐ <b>{row['Nome Exibição']}</b> | CSAT: <b>{row['CSAT_Agente (%)']:.1f}%</b></div>", unsafe_allow_html=True)
                         for _, row in lista_detratores_ir.iterrows(): st.markdown(f"<div class='detractor-box'>🎯 <b>{row['Nome Exibição']}</b> | IR: <b>{row['IR_Agente (%)']:.1f}%</b></div>", unsafe_allow_html=True)
-                with col_alerta_2:
-                    with st.expander(f"📉 Retenção: {len(detratores_retencao)} desvios"):
+                with c_a2:
+                    with st.expander(f"📈 Retenção: {len(detratores_retencao)} desvios"):
                         for _, row in detratores_retencao.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#fffaf0;border-color:#fbd38d;color:#dd6b20;'>📉 <b>{row['Nome Exibição']}</b> | Ret: <b>{row['% Retenção']:.2f}%</b></div>", unsafe_allow_html=True)
-                with col_alerta_3:
-                    with st.expander(f"⏱️ Processos: {total_desvios_processo} desvios"):
+                with c_a3:
+                    # Ajustado: Conformidade = Assiduidade e Escala
+                    with st.expander(f"📅 Conformidade (Escala): {len(lista_detratores_conf)} desvios"):
+                        for _, row in lista_detratores_conf.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#e6fffa;border-color:#319795;color:#234e52;'>📅 <b>{row['Nome Exibição']}</b> | Conf: <b>{row['Conformidade (%)']:.1f}%</b></div>", unsafe_allow_html=True)
+                with c_a4:
+                    # Ajustado: Aderência = Tempo Exato e Pausas
+                    with st.expander(f"⏱️ Aderência (Pausas): {len(lista_detratores_ade)} desvios"):
                         for _, row in lista_detratores_ade.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#fffaf5;border-color:#feb2b2;color:#c53030;'>⏱️ <b>{row['Nome Exibição']}</b> | Ade: <b>{row['Aderência (%)']:.1f}%</b></div>", unsafe_allow_html=True)
-                        for _, row in lista_detratores_conf.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#fffaf5;border-color:#feb2b2;color:#c53030;'>🛡️ <b>{row['Nome Exibição']}</b> | Conf: <b>{row['Conformidade (%)']:.1f}%</b></div>", unsafe_allow_html=True)
 
                 st.markdown("### 👥 Escopo da Análise")
                 agentes_lista = ["Todos"] + list(df_calculado['Nome Exibição'].dropna().unique())
                 filtro_agente = st.selectbox("Selecionar foco nominal:", agentes_lista)
                 df_final_escopo = df_calculado[df_calculado['Nome Exibição'] == filtro_agente] if filtro_agente != "Todos" else df_calculado.copy()
 
-                # CÁLCULOS DOS CARDS
+                # CÁLCULOS DOS CARDS GERAIS
                 if 'Total_Pesq_CSAT' in df_final_escopo.columns:
                     tot_csat = df_final_escopo['Total_Pesq_CSAT'].sum()
                     boas_csat = df_final_escopo['Boas_Pesq_CSAT'].sum()
@@ -413,10 +423,10 @@ else:
                 with c2: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>🎯 Índice IR</div><div class='kpi-value'>{v_ir:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_IR:.0f}%</div></div>", unsafe_allow_html=True)
                 with c3: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>📈 Taxa Retenção</div><div class='kpi-value'>{v_retencao:.2f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
                 with c4: st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>📉 Taxa Cancelamento</div><div class='kpi-value'>{v_cancelamento:.2f}%</div><div style='font-size:11px;color:#dc3545;'>Complementar</div></div>", unsafe_allow_html=True)
-                with c5: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>🛡️ Conformidade</div><div class='kpi-value'>{v_conf:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
+                with c5: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>📅 Conformidade (Escala)</div><div class='kpi-value'>{v_conf:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
 
                 cx0, cx1, cx2, cx3, cx4 = st.columns(5)
-                with cx0: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>⏱️ Aderência Geral</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
+                with cx0: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>⏱️ Aderência (Pausas)</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
                 with cx1: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>💬 Vol. Total Chat</div><div class='kpi-value'>{int(total_vol_chat):,}</div></div>", unsafe_allow_html=True)
                 with cx2: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>⏳ TMA Chat</div><div class='kpi-value'>{tma_chat_medio:.1f} min</div></div>", unsafe_allow_html=True)
                 with cx3: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>📞 Vol. Total Voz</div><div class='kpi-value'>{int(total_vol_voz):,}</div></div>", unsafe_allow_html=True)
@@ -445,11 +455,43 @@ else:
                             fig_ret.update_yaxes(autorange="reversed")
                             fig_ret.add_vline(x=META_RETENCAO, line_dash="dash", line_color="green")
                             st.plotly_chart(fig_ret, use_container_width=True)
+
+                    with tab_graf_2:
+                        cx1, cx2, cx3, cx4 = st.columns(4)
+                        with cx1:
+                            fig_ade = px.bar(df_chart_base.sort_values(by='Aderência (%)', ascending=True).head(10), x='Aderência (%)', y='Nome Exibição', orientation='h', title="⏱️ Aderência (Pausas)", color='Aderência (%)', color_continuous_scale='Reds_r')
+                            fig_ade.update_yaxes(autorange="reversed")
+                            fig_ade.add_vline(x=META_ADERENCIA, line_dash="dash", line_color="green")
+                            st.plotly_chart(fig_ade, use_container_width=True)
+                        with cx2:
+                            fig_conf = px.bar(df_chart_base.sort_values(by='Conformidade (%)', ascending=True).head(10), x='Conformidade (%)', y='Nome Exibição', orientation='h', title="📅 Conformidade (Escala)", color='Conformidade (%)', color_continuous_scale='Reds_r')
+                            fig_conf.update_yaxes(autorange="reversed")
+                            fig_conf.add_vline(x=META_CONFORMIDADE, line_dash="dash", line_color="green")
+                            st.plotly_chart(fig_conf, use_container_width=True)
+                        with cx3:
+                            fig_tmach = px.bar(df_chart_base.sort_values(by='TMA Chat (Min)', ascending=False).head(10), x='TMA Chat (Min)', y='Nome Exibição', orientation='h', title="⏳ Maiores TMAs Chat", color='TMA Chat (Min)', color_continuous_scale='Oranges')
+                            fig_tmach.update_yaxes(autorange="reversed")
+                            st.plotly_chart(fig_tmach, use_container_width=True)
+                        with cx4:
+                            fig_tmavz = px.bar(df_chart_base.sort_values(by='TMA Voz (Min)', ascending=False).head(10), x='TMA Voz (Min)', y='Nome Exibição', orientation='h', title="⏳ Maiores TMAs Voz", color='TMA Voz (Min)', color_continuous_scale='Oranges')
+                            fig_tmavz.update_yaxes(autorange="reversed")
+                            st.plotly_chart(fig_tmavz, use_container_width=True)
+
+                    with tab_graf_3:
+                        cv1, cv2 = st.columns(2)
+                        with cv1:
+                            fig_volch = px.bar(df_chart_base.sort_values(by='Vol. Chat', ascending=False).head(12), x='Vol. Chat', y='Nome Exibição', orientation='h', title="💬 Volume Chats por Operador", color='Vol. Chat', color_continuous_scale='Blues')
+                            fig_volch.update_yaxes(autorange="reversed")
+                            st.plotly_chart(fig_volch, use_container_width=True)
+                        with cv2:
+                            fig_volvz = px.bar(df_chart_base.sort_values(by='Vol. Voz', ascending=False).head(12), x='Vol. Voz', y='Nome Exibição', orientation='h', title="📞 Volume Voz por Operador", color='Vol. Voz', color_continuous_scale='Teal')
+                            fig_volvz.update_yaxes(autorange="reversed")
+                            st.plotly_chart(fig_volvz, use_container_width=True)
                     st.markdown("---")
 
-                # TABELA NOMINAL REFORMULADA (OBEDECE FÉRIAS DO MÊS ATIVO)
+                # TABELA NOMINAL REFORMULADA
                 st.subheader("👥 Detalhamento Operacional por Colaborador")
-                colunas_tabela = ['Nome Exibição', 'Status_Dinamico', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Aderência (%)', 'Conformidade (%)', 'Vol. Chat', 'Vol. Voz', 'RT geral valido', '% Retenção', '% Cancelamento']
+                colunas_tabela = ['Nome Exibição', 'Status_Dinamico', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Conformidade (%)', 'Aderência (%)', 'Vol. Chat', 'TMA Chat (Min)', 'Vol. Voz', 'TMA Voz (Min)', 'RT geral valido', '% Retenção', '% Cancelamento']
                 colunas_tabela = list(dict.fromkeys(colunas_tabela))
                 
                 def estilizar_linhas_status(row):
@@ -458,7 +500,8 @@ else:
 
                 st.dataframe(df_final_escopo[colunas_tabela].style.apply(estilizar_linhas_status, axis=1).format({
                     'CSAT_Agente (%)': '{:.1f}%', 'IR_Agente (%)': '{:.1f}%', 'Aderência (%)': '{:.1f}%', 'Conformidade (%)': '{:.1f}%',
-                    '% Retenção': '{:.2f}%', '% Cancelamento': '{:.2f}%', 'Vol. Chat': '{:,.0f}', 'Vol. Voz': '{:,.0f}', 'RT geral valido': '{:,.0f}'
+                    '% Retenção': '{:.2f}%', '% Cancelamento': '{:.2f}%', 'Vol. Chat': '{:,.0f}', 'TMA Chat (Min)': '{:.1f}m',
+                    'Vol. Voz': '{:,.0f}', 'TMA Voz (Min)': '{:.1f}m', 'RT geral valido': '{:,.0f}'
                 }), use_container_width=True)
 
     # ==========================================
@@ -469,8 +512,6 @@ else:
         elif not dados_carregados: st.warning(f"⚠️ {erro_dados}")
         else:
             st.title(f"👤 Meu Painel de Metas ({mes_view}/{ano_view})")
-            
-            # Cruzamento inteligente: o operador logado vê suas próprias férias se estiver cadastrado para este mês/ano ativos!
             try:
                 df_ferias_check = ler_csv_via_api_github("escala_ferias.csv")
                 meu_afastamento = df_ferias_check[
@@ -499,5 +540,14 @@ else:
                 ca1, ca2, ca3, ca4 = st.columns(4)
                 with ca1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu CSAT</div><div class='kpi-value'>{my_csat:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
                 with ca2: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu IR</div><div class='kpi-value'>{my_ir:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_IR:.0f}%</div></div>", unsafe_allow_html=True)
-                with ca3: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Minha Aderência</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
-                with ca4: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Minha Conformidade</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
+                with ca3: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Minha Conformidade (Escala)</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
+                with ca4: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Minha Aderência (Pausas)</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
+
+                st.markdown("### 🎧 Meus Volumes e Atendimento")
+                co1, co2, co3, co4 = st.columns(4)
+                with co1: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Chats Atendidos</div><div class='kpi-value'>{int(dados['Vol. Chat']) if pd.notna(dados['Vol. Chat']) else 0}</div></div>", unsafe_allow_html=True)
+                with co2: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Meu TMA Chat</div><div class='kpi-value'>{dados['TMA Chat (Min)']:.1f} m</div></div>", unsafe_allow_html=True)
+                with co3: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
+                with co4: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_RETENCAO:.0f}% | Cancelamento: {my_tx_canc:.1f}%</div></div>", unsafe_allow_html=True)
+            else:
+                st.info("Nenhum dado operacional associado ao seu perfil.")
