@@ -320,7 +320,7 @@ else:
                         st.rerun()
                     except Exception as e: st.error(f"Erro: {e}")
 
-        # ABA DASHBOARD ANALÍTICO
+        # ABA DASHBOARD ANALÍTICO (ATUALIZADA COM RÓTULOS DE DADOS NOS GRÁFICOS)
         with aba_dashboard:
             if not base_mestre_existe: st.warning("📢 Base mestre indisponível.")
             elif not dados_carregados: st.warning(f"⚠️ {erro_dados}")
@@ -352,9 +352,6 @@ else:
                 df_calculado['% Retenção'] = df_calculado['Taxa_Retencao_Original'].fillna(0) if 'Taxa_Retencao_Original' in df_calculado.columns else 0.0
                 df_calculado['% Cancelamento'] = df_calculado.apply(lambda r: 100 - r['% Retenção'] if r['% Retenção'] > 0 else 0.0, axis=1)
 
-                # ==========================================
-                # 🚨 AUDITORIA DESMEMBRADA E AJUSTADA AOS CONCEITOS WFM
-                # ==========================================
                 st.subheader(f"🚨 Auditoria de Desvios de Metas Contratuais ({mes_view}/{ano_view})")
                 df_ativos_alertas = df_calculado[df_calculado['Status_Dinamico'] == 'Ativo']
                 
@@ -375,11 +372,9 @@ else:
                     with st.expander(f"📈 Retenção: {len(detratores_retencao)} desvios"):
                         for _, row in detratores_retencao.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#fffaf0;border-color:#fbd38d;color:#dd6b20;'>📉 <b>{row['Nome Exibição']}</b> | Ret: <b>{row['% Retenção']:.2f}%</b></div>", unsafe_allow_html=True)
                 with c_a3:
-                    # Ajustado: Conformidade = Assiduidade e Escala
                     with st.expander(f"📅 Conformidade (Escala): {len(lista_detratores_conf)} desvios"):
                         for _, row in lista_detratores_conf.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#e6fffa;border-color:#319795;color:#234e52;'>📅 <b>{row['Nome Exibição']}</b> | Conf: <b>{row['Conformidade (%)']:.1f}%</b></div>", unsafe_allow_html=True)
                 with c_a4:
-                    # Ajustado: Aderência = Tempo Exato e Pausas
                     with st.expander(f"⏱️ Aderência (Pausas): {len(lista_detratores_ade)} desvios"):
                         for _, row in lista_detratores_ade.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#fffaf5;border-color:#feb2b2;color:#c53030;'>⏱️ <b>{row['Nome Exibição']}</b> | Ade: <b>{row['Aderência (%)']:.1f}%</b></div>", unsafe_allow_html=True)
 
@@ -438,20 +433,24 @@ else:
                     st.subheader("📊 Central de Auditoria Visual de Indicadores")
                     tab_graf_1, tab_graf_2, tab_graf_3 = st.tabs(["🏅 Rankings de Qualidade & Retenção", "⏱️ Rankings de Processos & Eficiência", "💬 Volumetria de Atendimentos"])
                     df_chart_base = df_final_escopo.dropna(subset=['Nome Exibição'])
+                    
                     with tab_graf_1:
                         cg1, cg2, cg3 = st.columns(3)
                         with cg1:
-                            fig_csat = px.bar(df_chart_base.sort_values(by='CSAT_Agente (%)', ascending=True).head(10), x='CSAT_Agente (%)', y='Nome Exibição', orientation='h', title="⭐ CSAT (Detratores)", color='CSAT_Agente (%)', color_continuous_scale='Reds_r')
+                            fig_csat = px.bar(df_chart_base.sort_values(by='CSAT_Agente (%)', ascending=True).head(10), x='CSAT_Agente (%)', y='Nome Exibição', orientation='h', title="⭐ CSAT (Detratores)", color='CSAT_Agente (%)', color_continuous_scale='Reds_r', text='CSAT_Agente (%)')
+                            fig_csat.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
                             fig_csat.update_yaxes(autorange="reversed")
                             fig_csat.add_vline(x=META_CSAT, line_dash="dash", line_color="green")
                             st.plotly_chart(fig_csat, use_container_width=True)
                         with cg2:
-                            fig_ir = px.bar(df_chart_base.sort_values(by='IR_Agente (%)', ascending=True).head(10), x='IR_Agente (%)', y='Nome Exibição', orientation='h', title="🎯 Índice IR por Operador", color='IR_Agente (%)', color_continuous_scale='Reds_r')
+                            fig_ir = px.bar(df_chart_base.sort_values(by='IR_Agente (%)', ascending=True).head(10), x='IR_Agente (%)', y='Nome Exibição', orientation='h', title="🎯 Índice IR", color='IR_Agente (%)', color_continuous_scale='Reds_r', text='IR_Agente (%)')
+                            fig_ir.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
                             fig_ir.update_yaxes(autorange="reversed")
                             fig_ir.add_vline(x=META_IR, line_dash="dash", line_color="green")
                             st.plotly_chart(fig_ir, use_container_width=True)
                         with cg3:
-                            fig_ret = px.bar(df_chart_base.sort_values(by='% Retenção', ascending=True).head(10), x='% Retenção', y='Nome Exibição', orientation='h', title="📈 Retenção", color='% Retenção', color_continuous_scale='Reds_r')
+                            fig_ret = px.bar(df_chart_base.sort_values(by='% Retenção', ascending=True).head(10), x='% Retenção', y='Nome Exibição', orientation='h', title="📈 Retenção", color='% Retenção', color_continuous_scale='Reds_r', text='% Retenção')
+                            fig_ret.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
                             fig_ret.update_yaxes(autorange="reversed")
                             fig_ret.add_vline(x=META_RETENCAO, line_dash="dash", line_color="green")
                             st.plotly_chart(fig_ret, use_container_width=True)
@@ -459,32 +458,38 @@ else:
                     with tab_graf_2:
                         cx1, cx2, cx3, cx4 = st.columns(4)
                         with cx1:
-                            fig_ade = px.bar(df_chart_base.sort_values(by='Aderência (%)', ascending=True).head(10), x='Aderência (%)', y='Nome Exibição', orientation='h', title="⏱️ Aderência (Pausas)", color='Aderência (%)', color_continuous_scale='Reds_r')
+                            fig_ade = px.bar(df_chart_base.sort_values(by='Aderência (%)', ascending=True).head(10), x='Aderência (%)', y='Nome Exibição', orientation='h', title="⏱️ Aderência (Pausas)", color='Aderência (%)', color_continuous_scale='Reds_r', text='Aderência (%)')
+                            fig_ade.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
                             fig_ade.update_yaxes(autorange="reversed")
                             fig_ade.add_vline(x=META_ADERENCIA, line_dash="dash", line_color="green")
                             st.plotly_chart(fig_ade, use_container_width=True)
                         with cx2:
-                            fig_conf = px.bar(df_chart_base.sort_values(by='Conformidade (%)', ascending=True).head(10), x='Conformidade (%)', y='Nome Exibição', orientation='h', title="📅 Conformidade (Escala)", color='Conformidade (%)', color_continuous_scale='Reds_r')
+                            fig_conf = px.bar(df_chart_base.sort_values(by='Conformidade (%)', ascending=True).head(10), x='Conformidade (%)', y='Nome Exibição', orientation='h', title="📅 Conformidade (Escala)", color='Conformidade (%)', color_continuous_scale='Reds_r', text='Conformidade (%)')
+                            fig_conf.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
                             fig_conf.update_yaxes(autorange="reversed")
                             fig_conf.add_vline(x=META_CONFORMIDADE, line_dash="dash", line_color="green")
                             st.plotly_chart(fig_conf, use_container_width=True)
                         with cx3:
-                            fig_tmach = px.bar(df_chart_base.sort_values(by='TMA Chat (Min)', ascending=False).head(10), x='TMA Chat (Min)', y='Nome Exibição', orientation='h', title="⏳ Maiores TMAs Chat", color='TMA Chat (Min)', color_continuous_scale='Oranges')
+                            fig_tmach = px.bar(df_chart_base.sort_values(by='TMA Chat (Min)', ascending=False).head(10), x='TMA Chat (Min)', y='Nome Exibição', orientation='h', title="⏳ Maiores TMAs Chat", color='TMA Chat (Min)', color_continuous_scale='Oranges', text='TMA Chat (Min)')
+                            fig_tmach.update_traces(texttemplate='%{text:.1f}m', textposition='auto')
                             fig_tmach.update_yaxes(autorange="reversed")
                             st.plotly_chart(fig_tmach, use_container_width=True)
                         with cx4:
-                            fig_tmavz = px.bar(df_chart_base.sort_values(by='TMA Voz (Min)', ascending=False).head(10), x='TMA Voz (Min)', y='Nome Exibição', orientation='h', title="⏳ Maiores TMAs Voz", color='TMA Voz (Min)', color_continuous_scale='Oranges')
+                            fig_tmavz = px.bar(df_chart_base.sort_values(by='TMA Voz (Min)', ascending=False).head(10), x='TMA Voz (Min)', y='Nome Exibição', orientation='h', title="⏳ Maiores TMAs Voz", color='TMA Voz (Min)', color_continuous_scale='Oranges', text='TMA Voz (Min)')
+                            fig_tmavz.update_traces(texttemplate='%{text:.1f}m', textposition='auto')
                             fig_tmavz.update_yaxes(autorange="reversed")
                             st.plotly_chart(fig_tmavz, use_container_width=True)
 
                     with tab_graf_3:
                         cv1, cv2 = st.columns(2)
                         with cv1:
-                            fig_volch = px.bar(df_chart_base.sort_values(by='Vol. Chat', ascending=False).head(12), x='Vol. Chat', y='Nome Exibição', orientation='h', title="💬 Volume Chats por Operador", color='Vol. Chat', color_continuous_scale='Blues')
+                            fig_volch = px.bar(df_chart_base.sort_values(by='Vol. Chat', ascending=False).head(12), x='Vol. Chat', y='Nome Exibição', orientation='h', title="💬 Volume Chats por Operador", color='Vol. Chat', color_continuous_scale='Blues', text='Vol. Chat')
+                            fig_volch.update_traces(texttemplate='%{text:,.0f}', textposition='auto')
                             fig_volch.update_yaxes(autorange="reversed")
                             st.plotly_chart(fig_volch, use_container_width=True)
                         with cv2:
-                            fig_volvz = px.bar(df_chart_base.sort_values(by='Vol. Voz', ascending=False).head(12), x='Vol. Voz', y='Nome Exibição', orientation='h', title="📞 Volume Voz por Operador", color='Vol. Voz', color_continuous_scale='Teal')
+                            fig_volvz = px.bar(df_chart_base.sort_values(by='Vol. Voz', ascending=False).head(12), x='Vol. Voz', y='Nome Exibição', orientation='h', title="📞 Volume Voz por Operador", color='Vol. Voz', color_continuous_scale='Teal', text='Vol. Voz')
+                            fig_volvz.update_traces(texttemplate='%{text:,.0f}', textposition='auto')
                             fig_volvz.update_yaxes(autorange="reversed")
                             st.plotly_chart(fig_volvz, use_container_width=True)
                     st.markdown("---")
