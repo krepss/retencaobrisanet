@@ -172,7 +172,7 @@ if not st.session_state.logged_in:
                     else:
                         st.error("❌ E-mail não encontrado ou senha incorreta.")
                 except Exception:
-                    st.warning("⚠️ Base de dados de utilizadores indisponível no repositório.")
+                    st.warning("⚠️ Base de dados de utilizadores de momento inacessível.")
 
 # ==========================================
 # SISTEMA LOGADO
@@ -320,19 +320,18 @@ else:
                         except Exception as e:
                             st.error(f"Erro: {e}")
 
-        # ABA DASHBOARD DE INDICADORES (CRITÉRIO MESTRE DE CADENAÇÃO DE FILTRO)
+        # ABA DASHBOARD DE INDICADORES (A GRANDE REFORMA VISUAL)
         with aba_dashboard:
             if not base_mestre_existe:
                 st.warning("📢 Base mestre indisponível no repositório.")
             elif not dados_carregados:
                 st.warning(f"⚠️ {erro_dados}")
             else:
-                st.title(f"📈 Painel Analítico de Controle Operacional ({mes_view}/{ano_view})")
+                st.title(f"📊 Painel Analítico de Controle Operacional ({mes_view}/{ano_view})")
                 
-                # 1. O GATILHO MESTRE DE TODA A PÁGINA (BOTÃO DE FLIP DE STATUS)
+                # FILTRO MESTRE DE ENTRADA
                 modo_visao = st.radio("Filtro de Status de Equipe:", ["Mostrar Apenas Ativos", "Mostrar Todos (Incluir Férias/Afastados)"], horizontal=True)
                 
-                # CORTA A BASE AQUI - TUDO ABAIXO DISSO VAI SEGUIR ESSA REGRA SEM EXCEÇÃO
                 if 'Status' in df_periodo.columns and modo_visao == "Mostrar Apenas Ativos":
                     df_filtrado_status = df_periodo[df_periodo['Status'].fillna('Ativo').str.strip().str.title() == 'Ativo']
                     sub_status_text = "Apenas Quadro Ativo"
@@ -340,7 +339,7 @@ else:
                     df_filtrado_status = df_periodo.copy()
                     sub_status_text = "Todo o Quadro Nominal"
 
-                # Geração da base unificada tratada nominalmente
+                # Geração da base de cálculo obedecendo rigidamente o botão de cima
                 df_calculado = df_filtrado_status.copy()
                 if 'Total_Pesq_CSAT' in df_calculado.columns:
                     df_calculado['CSAT_Agente (%)'] = (df_calculado['Boas_Pesq_CSAT'] / df_calculado['Total_Pesq_CSAT'] * 100).fillna(0)
@@ -353,7 +352,7 @@ else:
                 df_calculado['% Cancelamento'] = df_calculado.apply(lambda r: 100 - r['% Retenção'] if r['% Retenção'] > 0 else 0.0, axis=1)
 
                 # ==========================================
-                # 🚨 EXPANDERS NOMINAIS DE AUDITORIA (OBEDECE FILTRO EM 100%)
+                # 🚨 EXPANDERS RETRÁTEIS DE AUDITORIA DE DESVIOS
                 # ==========================================
                 st.subheader("🚨 Auditoria de Desvios de Metas")
                 
@@ -408,7 +407,7 @@ else:
                     agentes_lista = ["Todos"] + list(df_calculado['Nome Exibição'].dropna().unique())
                     filtro_agente = st.selectbox("Selecionar foco nominal:", agentes_lista)
                 
-                # Base restrita final que vai alimentar o resto da tela inteira
+                # Base restrita final que alimenta absolutamente toda a tela
                 df_final_escopo = df_calculado[df_calculado['Nome Exibição'] == filtro_agente] if filtro_agente != "Todos" else df_calculado.copy()
 
                 # --- PROCESSAMENTO DOS CARDS OPERACIONAIS ---
@@ -416,12 +415,11 @@ else:
                     tot_csat = df_final_escopo['Total_Pesq_CSAT'].sum()
                     boas_csat = df_final_escopo['Boas_Pesq_CSAT'].sum()
                     v_csat = (boas_csat / tot_csat * 100) if tot_csat > 0 else 0.0
-                    
                     tot_ir = df_final_escopo['Total_Pesq_IR'].sum()
                     sim_ir = df_final_escopo['Sim_Pesq_IR'].sum()
                     v_ir = (sim_ir / tot_ir * 100) if tot_ir > 0 else 0.0
-                    sub_csat = f"Amostra: {int(tot_csat)} pesq."
-                    sub_ir = f"Amostra: {int(tot_ir)} pesq."
+                    sub_csat = f"Base: {int(tot_csat)} pesq."
+                    sub_ir = f"Base: {int(tot_ir)} pesq."
                 else:
                     v_csat = df_final_escopo['CSAT_Media'].mean() if not df_final_escopo.empty else 0.0
                     v_ir = df_final_escopo['IR_Percentual'].mean() if not df_final_escopo.empty else 0.0
@@ -434,7 +432,8 @@ else:
                 total_rt_valido = df_final_escopo['RT geral valido'].sum() if not df_final_escopo.empty else 0
                 if 'Taxa_Retencao_Original' in df_final_escopo.columns:
                     if filtro_agente == "Todos":
-                        col_total_nome = 'RT geral calculated' if 'RT geral calculated' in df_final_escopo.columns else 'RT geral calculado'
+                        col_total_nome = 'RT geral calculated' if 'RT geral calculated' in df_final_escopo.columns else 'RT geral conhecido'
+                        if col_total_nome not in df_final_escopo.columns: col_total_nome = 'RT geral calculado'
                         total_calculado_equipe = df_final_escopo[col_total_nome].sum()
                         v_retencao = (total_rt_valido / total_calculado_equipe * 100) if total_calculado_equipe > 0 else 0.0
                     else:
@@ -478,74 +477,118 @@ else:
 
                 st.markdown("---")
 
-                # AUDITORIA GRÁFICA DINÂMICA
+                # ==========================================
+                # 📊 NOVA VISÃO GRÁFICA AVANÇADA (SISTEMA DE SUB-ABAS)
+                # ==========================================
                 if filtro_agente == "Todos":
-                    st.subheader("📊 Motor de Auditoria Gráfica - Foco nos Detratores e Gargalos")
-                    indicador_grafico = st.selectbox("Selecione o Indicador para Analisar o Ranking de Oportunidades:", 
-                                                    ["CSAT", "Índice IR", "Taxa de Retenção", "Aderência", "Conformidade", "TMA Chat", "TMA Voz"])
+                    st.subheader("📊 Central de Auditoria Visual de Indicadores")
+                    
+                    tab_graf_1, tab_graf_2, tab_graf_3 = st.tabs([
+                        "🏅 Rankings de Qualidade & Retenção", 
+                        "⏱️ Rankings de Processos & Eficiência", 
+                        "💬 Volumetria de Atendimentos"
+                    ])
                     
                     df_chart_base = df_final_escopo.dropna(subset=['Nome Exibição'])
                     
-                    if indicador_grafico == "CSAT":
-                        df_chart = df_chart_base.sort_values(by='CSAT_Agente (%)', ascending=True).head(12)
-                        fig = px.bar(df_chart, x='CSAT_Agente (%)', y='Nome Exibição', orientation='h',
-                                     title=f"⭐ Ranking Crescente CSAT (Meta Contratual: {META_CSAT:.0f}%)",
-                                     labels={'CSAT_Agente (%)': 'CSAT (%)', 'Nome Exibição': 'Operador'},
-                                     color='CSAT_Agente (%)', color_continuous_scale='Reds_r')
-                        fig.add_vline(x=META_CSAT, line_dash="dash", line_color="green", annotation_text=f"Meta {META_CSAT:.0f}%", annotation_position="top right")
-                    
-                    elif indicador_grafico == "Índice IR":
-                        df_chart = df_chart_base.sort_values(by='IR_Agente (%)', ascending=True).head(12)
-                        fig = px.bar(df_chart, x='IR_Agente (%)', y='Nome Exibição', orientation='h',
-                                     title=f"🎯 Ranking Crescente IR (Meta Contratual: {META_IR:.0f}%)",
-                                     labels={'IR_Agente (%)': 'Índice IR (%)', 'Nome Exibição': 'Operador'},
-                                     color='IR_Agente (%)', color_continuous_scale='Reds_r')
-                        fig.add_vline(x=META_IR, line_dash="dash", line_color="green", annotation_text=f"Meta {META_IR:.0f}%", annotation_position="top right")
-                    
-                    elif indicador_grafico == "Taxa de Retenção":
-                        df_chart = df_chart_base.sort_values(by='% Retenção', ascending=True).head(12)
-                        fig = px.bar(df_chart, x='% Retenção', y='Nome Exibição', orientation='h',
-                                     title=f"📈 Ranking Crescente de Retenção (Meta Contratual: {META_RETENCAO:.0f}%)",
-                                     labels={'% Retenção': 'Taxa de Retenção (%)', 'Nome Exibição': 'Operador'},
-                                     color='% Retenção', color_continuous_scale='Reds_r')
-                        fig.add_vline(x=META_RETENCAO, line_dash="dash", line_color="green", annotation_text=f"Meta {META_RETENCAO:.0f}%", annotation_position="top right")
-                    
-                    elif indicador_grafico == "Aderência":
-                        df_chart = df_chart_base.sort_values(by='Aderência (%)', ascending=True).head(12)
-                        fig = px.bar(df_chart, x='Aderência (%)', y='Nome Exibição', orientation='h',
-                                     title=f"⏱️ Ranking Crescente de Aderência (Meta Contratual: {META_ADERENCIA:.0f}%)",
-                                     labels={'Aderência (%)': 'Aderência (%)', 'Nome Exibição': 'Operador'},
-                                     color='Aderência (%)', color_continuous_scale='Reds_r')
-                        fig.add_vline(x=META_ADERENCIA, line_dash="dash", line_color="green", annotation_text=f"Meta {META_ADERENCIA:.0f}%", annotation_position="top right")
-                    
-                    elif indicador_grafico == "Conformidade":
-                        df_chart = df_chart_base.sort_values(by='Conformidade (%)', ascending=True).head(12)
-                        fig = px.bar(df_chart, x='Conformidade (%)', y='Nome Exibição', orientation='h',
-                                     title=f"🛡️ Ranking Crescente de Conformidade (Meta Contratual: {META_CONFORMIDADE:.0f}%)",
-                                     labels={'Conformidade (%)': 'Conformidade (%)', 'Nome Exibição': 'Operador'},
-                                     color='Conformidade (%)', color_continuous_scale='Reds_r')
-                        fig.add_vline(x=META_CONFORMIDADE, line_dash="dash", line_color="green", annotation_text=f"Meta {META_CONFORMIDADE:.0f}%", annotation_position="top right")
-                    
-                    elif indicador_grafico == "TMA Chat":
-                        df_chart = df_chart_base.sort_values(by='TMA Chat (Min)', ascending=False).head(12)
-                        fig = px.bar(df_chart, x='TMA Chat (Min)', y='Nome Exibição', orientation='h',
-                                     title="⏳ Maiores TMAs Chat - Gargalos de Tempo",
-                                     labels={'TMA Chat (Min)': 'Minutos', 'Nome Exibição': 'Operador'},
-                                     color='TMA Chat (Min)', color_continuous_scale='Oranges')
-                    
-                    elif indicador_grafico == "TMA Voz":
-                        df_chart = df_chart_base.sort_values(by='TMA Voz (Min)', ascending=False).head(12)
-                        fig = px.bar(df_chart, x='TMA Voz (Min)', y='Nome Exibição', orientation='h',
-                                     title="⏳ Maiores TMAs Voz - Gargalos de Tempo",
-                                     labels={'TMA Voz (Min)': 'Minutos', 'Nome Exibição': 'Operador'},
-                                     color='TMA Voz (Min)', color_continuous_scale='Oranges')
-                    
-                    fig.update_layout(yaxis={'categoryorder': 'total ascending' if indicador_grafico not in ["TMA Chat", "TMA Voz"] else 'total descending'}, coloraxis_showscale=False)
-                    st.plotly_chart(fig, use_container_width=True)
+                    with tab_graf_1:
+                        cg1, cg2, cg3 = st.columns(3)
+                        with cg1:
+                            df_csat_chart = df_chart_base.sort_values(by='CSAT_Agente (%)', ascending=True).head(10)
+                            fig_csat = px.bar(df_csat_chart, x='CSAT_Agente (%)', y='Nome Exibição', orientation='h',
+                                             title="⭐ CSAT (Foco nos Detratores)",
+                                             labels={'CSAT_Agente (%)': 'CSAT (%)', 'Nome Exibição': 'Operador'},
+                                             color='CSAT_Agente (%)', color_continuous_scale='Reds_r')
+                            fig_csat.update_yaxes(autorange="reversed")
+                            fig_csat.add_vline(x=META_CSAT, line_dash="dash", line_color="green", annotation_text=f"Meta {META_CSAT:.0f}%", annotation_position="top right")
+                            fig_csat.update_layout(coloraxis_showscale=False, height=350, margin=dict(l=20, r=20, t=40, b=20))
+                            st.plotly_chart(fig_csat, use_container_width=True)
+                        with cg2:
+                            df_ir_chart = df_chart_base.sort_values(by='IR_Agente (%)', ascending=True).head(10)
+                            fig_ir = px.bar(df_ir_chart, x='IR_Agente (%)', y='Nome Exibição', orientation='h',
+                                           title="🎯 Índice IR por Operador",
+                                           labels={'IR_Agente (%)': 'IR (%)', 'Nome Exibição': 'Operador'},
+                                           color='IR_Agente (%)', color_continuous_scale='Reds_r')
+                            fig_ir.update_yaxes(autorange="reversed")
+                            fig_ir.add_vline(x=META_IR, line_dash="dash", line_color="green", annotation_text=f"Meta {META_IR:.0f}%", annotation_position="top right")
+                            fig_ir.update_layout(coloraxis_showscale=False, height=350, margin=dict(l=20, r=20, t=40, b=20))
+                            st.plotly_chart(fig_ir, use_container_width=True)
+                        with cg3:
+                            df_ret_chart = df_chart_base.sort_values(by='% Retenção', ascending=True).head(10)
+                            fig_ret = px.bar(df_ret_chart, x='% Retenção', y='Nome Exibição', orientation='h',
+                                            title="📈 Retenção (Menores Taxas Primeiro)",
+                                            labels={'% Retenção': 'Retenção (%)', 'Nome Exibição': 'Operador'},
+                                            color='% Retenção', color_continuous_scale='Reds_r')
+                            fig_ret.update_yaxes(autorange="reversed")
+                            fig_ret.add_vline(x=META_RETENCAO, line_dash="dash", line_color="green", annotation_text=f"Meta {META_RETENCAO:.0f}%", annotation_position="top right")
+                            fig_ret.update_layout(coloraxis_showscale=False, height=350, margin=dict(l=20, r=20, t=40, b=20))
+                            st.plotly_chart(fig_ret, use_container_width=True)
+
+                    with tab_graf_2:
+                        cx1, cx2, cx3, cx4 = st.columns(4)
+                        with cx1:
+                            df_ade_chart = df_chart_base.sort_values(by='Aderência (%)', ascending=True).head(10)
+                            fig_ade = px.bar(df_ade_chart, x='Aderência (%)', y='Nome Exibição', orientation='h',
+                                            title="⏱️ Menores Aderências",
+                                            labels={'Aderência (%)': 'Aderência (%)', 'Nome Exibição': 'Operador'},
+                                            color='Aderência (%)', color_continuous_scale='Reds_r')
+                            fig_ade.update_yaxes(autorange="reversed")
+                            fig_ade.add_vline(x=META_ADERENCIA, line_dash="dash", line_color="green", annotation_text=f"Meta {META_ADERENCIA:.0f}%", annotation_position="top right")
+                            fig_ade.update_layout(coloraxis_showscale=False, height=350, margin=dict(l=20, r=20, t=40, b=20))
+                            st.plotly_chart(fig_ade, use_container_width=True)
+                        with cx2:
+                            df_conf_chart = df_chart_base.sort_values(by='Conformidade (%)', ascending=True).head(10)
+                            fig_conf = px.bar(df_conf_chart, x='Conformidade (%)', y='Nome Exibição', orientation='h',
+                                             title="🛡️ Menores Conformidades",
+                                             labels={'Conformidade (%)': 'Conformidade (%)', 'Nome Exibição': 'Operador'},
+                                             color='Conformidade (%)', color_continuous_scale='Reds_r')
+                            fig_conf.update_yaxes(autorange="reversed")
+                            fig_conf.add_vline(x=META_CONFORMIDADE, line_dash="dash", line_color="green", annotation_text=f"Meta {META_CONFORMIDADE:.0f}%", annotation_position="top right")
+                            fig_conf.update_layout(coloraxis_showscale=False, height=350, margin=dict(l=20, r=20, t=40, b=20))
+                            st.plotly_chart(fig_conf, use_container_width=True)
+                        with cx3:
+                            df_tmach_chart = df_chart_base.sort_values(by='TMA Chat (Min)', ascending=False).head(10)
+                            fig_tmach = px.bar(df_tmach_chart, x='TMA Chat (Min)', y='Nome Exibição', orientation='h',
+                                              title="⏳ Maiores TMAs Chat (Gargalo)",
+                                              labels={'TMA Chat (Min)': 'Minutos', 'Nome Exibição': 'Operador'},
+                                              color='TMA Chat (Min)', color_continuous_scale='Oranges')
+                            fig_tmach.update_yaxes(autorange="reversed")
+                            fig_tmach.update_layout(coloraxis_showscale=False, height=350, margin=dict(l=20, r=20, t=40, b=20))
+                            st.plotly_chart(fig_tmach, use_container_width=True)
+                        with cx4:
+                            df_tmavz_chart = df_chart_base.sort_values(by='TMA Voz (Min)', ascending=False).head(10)
+                            fig_tmavz = px.bar(df_tmavz_chart, x='TMA Voz (Min)', y='Nome Exibição', orientation='h',
+                                              title="⏳ Maiores TMAs Voz (Gargalo)",
+                                              labels={'TMA Voz (Min)': 'Minutos', 'Nome Exibição': 'Operador'},
+                                              color='TMA Voz (Min)', color_continuous_scale='Oranges')
+                            fig_tmavz.update_yaxes(autorange="reversed")
+                            fig_tmavz.update_layout(coloraxis_showscale=False, height=350, margin=dict(l=20, r=20, t=40, b=20))
+                            st.plotly_chart(fig_tmavz, use_container_width=True)
+
+                    with tab_graf_3:
+                        cv1, cv2 = st.columns(2)
+                        with cv1:
+                            df_volch_chart = df_chart_base.sort_values(by='Vol. Chat', ascending=False).head(12)
+                            fig_volch = px.bar(df_volch_chart, x='Vol. Chat', y='Nome Exibição', orientation='h',
+                                               title="💬 Volume Total de Chats por Operador",
+                                               labels={'Vol. Chat': 'Atendimentos', 'Nome Exibição': 'Operador'},
+                                               color='Vol. Chat', color_continuous_scale='Blues')
+                            fig_volch.update_yaxes(autorange="reversed")
+                            fig_volch.update_layout(coloraxis_showscale=False, height=380, margin=dict(l=20, r=20, t=40, b=20))
+                            st.plotly_chart(fig_volch, use_container_width=True)
+                        with cv2:
+                            df_volvz_chart = df_chart_base.sort_values(by='Vol. Voz', ascending=False).head(12)
+                            fig_volvz = px.bar(df_volvz_chart, x='Vol. Voz', y='Nome Exibição', orientation='h',
+                                               title="📞 Volume Total de Voz por Operador",
+                                               labels={'Vol. Voz': 'Atendimentos', 'Nome Exibição': 'Operador'},
+                                               color='Vol. Voz', color_continuous_scale='Teal')
+                            fig_volvz.update_yaxes(autorange="reversed")
+                            fig_volvz.update_layout(coloraxis_showscale=False, height=380, margin=dict(l=20, r=20, t=40, b=20))
+                            st.plotly_chart(fig_volvz, use_container_width=True)
                     st.markdown("---")
 
                 # ==========================================
-                # 👥 ÚLTIMA TABELA DA PÁGINA (FILTRADA E SINCRONIZADA EM 100%)
+                # 👥 TABELA NOMINAL (100% CORTADA PELO FILTRO)
                 # ==========================================
                 st.subheader("👥 Detalhamento Operacional por Colaborador")
                 colunas_tabela = ['Nome Exibição', 'Status' if 'Status' in df_final_escopo.columns else 'Nome Exibição', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Aderência (%)', 'Conformidade (%)', 'Vol. Chat', 'TMA Chat (Min)', 'Vol. Voz', 'TMA Voz (Min)', 'RT geral valido', '% Retenção', '% Cancelamento']
@@ -608,6 +651,6 @@ else:
                 with co3:
                     st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
                 with co4:
-                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_RETENCAO:.0f}% | Cancelamento: {my_tx_canc:.1f}%</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
             else:
                 st.info("Nenhum dado operacional associado ao seu perfil.")
