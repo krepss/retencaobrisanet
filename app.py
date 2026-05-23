@@ -57,14 +57,6 @@ st.markdown("""
             font-size: 13px;
             line-height: 1.4;
         }
-        .validation-badge {
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-weight: bold;
-            font-size: 14px;
-            margin-bottom: 5px;
-            display: inline-block;
-        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -180,7 +172,7 @@ if not st.session_state.logged_in:
                     else:
                         st.error("❌ E-mail não encontrado ou senha incorreta.")
                 except Exception:
-                    st.warning("⚠️ Base de dados de utilizadores temporariamente indisponível.")
+                    st.warning("⚠️ Base de dados de usuários inacessível de momento.")
 
 # ==========================================
 # SISTEMA LOGADO
@@ -243,40 +235,25 @@ else:
             except Exception:
                 st.warning("O arquivo mestre de usuários não foi localizado.")
 
-        # ==========================================
-        # ⚙️ NOVA ABA DE UPLOAD MULTIPLO COM CHECKLIST DE VALIDAÇÃO
-        # ==========================================
+        # ABA UPLOAD
         with aba_upload:
             st.header("⚙️ Central de Consolidação de Relatórios")
-            st.markdown("Selecione os **5 arquivos CSV obrigatórios de uma só vez** na caixa abaixo. O sistema fará a auditoria automática dos cabeçalhos.")
+            st.markdown("Selecione os **5 arquivos CSV obrigatórios de uma só vez** na caixa abaixo.")
             
             col_m, col_a = st.columns(2)
             mes_up = col_m.selectbox("Mês de competência das planilhas:", MESES, index=4)
             ano_up = col_a.selectbox("Ano de competência das planilhas:", ANOS)
             
             st.markdown("---")
-            
-            # CAIXA DE UPLOAD MÚLTIPLO UNIFICADA
             arquivos_carregados = st.file_uploader("Arraste e solte os 5 arquivos CSV aqui de uma vez", type=["csv"], accept_multiple_files=True)
             
-            # Dicionários de mapeamento e controle para a validação
-            relatorios_identificados = {
-                "Aderência": None,
-                "Pesquisa (CSAT/IR)": None,
-                "Chat": None,
-                "Voz": None,
-                "Retenção": None
-            }
+            relatorios_identificados = {"Aderência": None, "Pesquisa (CSAT/IR)": None, "Chat": None, "Voz": None, "Retenção": None}
             
-            # Varre os arquivos anexados para validar os cabeçalhos em tempo real
             if arquivos_carregados:
                 for arquivo in arquivos_carregados:
                     try:
-                        # Lê apenas a primeira linha (cabeçalho) de forma ultrarrápida para validação
                         df_header = pd.read_csv(arquivo, nrows=0)
                         cols = [c.strip() for c in df_header.columns]
-                        
-                        # Reseta o ponteiro de leitura do arquivo para ele poder ser relido depois no processamento
                         arquivo.seek(0)
                         
                         if 'Aderência (%)' in cols and 'Agente' in cols:
@@ -284,66 +261,28 @@ else:
                         elif 'CSAT' in cols and 'Atendente' in cols:
                             relatorios_identificados["Pesquisa (CSAT/IR)"] = arquivo
                         elif 'Nome do agente' in cols and 'Atendidas' in cols and 'Tratamento médio' in cols:
-                            # Desempata Chat e Voz analisando colunas extras
-                            if 'Espera média' in cols:
-                                # Se contiver ambas, pode ser qualquer um, validamos pelo nome do arquivo ou tratamos similarmente
-                                # Mas para garantir a distinção justa do seu fluxo:
-                                if "chat" in arquivo.name.lower():
-                                    relatorios_identificados["Chat"] = arquivo
-                                else:
-                                    relatorios_identificados["Voz"] = arquivo
-                            else:
-                                relatorios_identificados["Voz"] = arquivo
+                            if "chat" in arquivo.name.lower(): relatorios_identificados["Chat"] = arquivo
+                            else: relatorios_identificados["Voz"] = arquivo
                         elif 'responsavel' in cols and '% de retenção' in cols:
                             relatorios_identificados["Retenção"] = arquivo
-                    except Exception:
-                        pass
+                    except Exception: pass
 
-            # EXIBIÇÃO DO CHECKLIST VISUAL DE AUDITORIA
             st.markdown("### 📋 Status da Validação dos Arquivos")
-            
             c_chk1, c_chk2, c_chk3, c_chk4, c_chk5 = st.columns(5)
-            with c_chk1:
-                if relatorios_identificados["Aderência"]:
-                    st.markdown("<div style='background-color:#e6fffa;border:1px solid #319795;color:#234e52;padding:10px;border-radius:5px;text-align:center;'><b>🟢 1. Aderência</b><br><small>Pronto</small></div>", unsafe_allow_html=True)
-                else:
-                    st.markdown("<div style='background-color:#fff5f5;border:1px solid #e53e3e;color:#742a2a;padding:10px;border-radius:5px;text-align:center;'><b>🔴 1. Aderência</b><br><small>Aguardando...</small></div>", unsafe_allow_html=True)
-                    
-            with c_chk2:
-                if relatorios_identificados["Pesquisa (CSAT/IR)"]:
-                    st.markdown("<div style='background-color:#e6fffa;border:1px solid #319795;color:#234e52;padding:10px;border-radius:5px;text-align:center;'><b>🟢 2. Pesquisas</b><br><small>Pronto</small></div>", unsafe_allow_html=True)
-                else:
-                    st.markdown("<div style='background-color:#fff5f5;border:1px solid #e53e3e;color:#742a2a;padding:10px;border-radius:5px;text-align:center;'><b>🔴 2. Pesquisas</b><br><small>Aguardando...</small></div>", unsafe_allow_html=True)
-                    
-            with c_chk3:
-                if relatorios_identificados["Chat"]:
-                    st.markdown("<div style='background-color:#e6fffa;border:1px solid #319795;color:#234e52;padding:10px;border-radius:5px;text-align:center;'><b>🟢 3. Chat</b><br><small>Pronto</small></div>", unsafe_allow_html=True)
-                else:
-                    st.markdown("<div style='background-color:#fff5f5;border:1px solid #e53e3e;color:#742a2a;padding:10px;border-radius:5px;text-align:center;'><b>🔴 3. Chat</b><br><small>Aguardando...</small></div>", unsafe_allow_html=True)
-                    
-            with c_chk4:
-                if relatorios_identificados["Voz"]:
-                    st.markdown("<div style='background-color:#e6fffa;border:1px solid #319795;color:#234e52;padding:10px;border-radius:5px;text-align:center;'><b>🟢 4. Voz</b><br><small>Pronto</small></div>", unsafe_allow_html=True)
-                else:
-                    st.markdown("<div style='background-color:#fff5f5;border:1px solid #e53e3e;color:#742a2a;padding:10px;border-radius:5px;text-align:center;'><b>🔴 4. Voz</b><br><small>Aguardando...</small></div>", unsafe_allow_html=True)
-                    
-            with c_chk5:
-                if relatorios_identificados["Retenção"]:
-                    st.markdown("<div style='background-color:#e6fffa;border:1px solid #319795;color:#234e52;padding:10px;border-radius:5px;text-align:center;'><b>🟢 5. Retenção</b><br><small>Pronto</small></div>", unsafe_allow_html=True)
-                else:
-                    st.markdown("<div style='background-color:#fff5f5;border:1px solid #e53e3e;color:#742a2a;padding:10px;border-radius:5px;text-align:center;'><b>🔴 5. Retenção</b><br><small>Aguardando...</small></div>", unsafe_allow_html=True)
+            with c_chk1: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;color:#234e52' if relatorios_identificados['Aderência'] else '#fff5f5;border:1px solid #e53e3e;color:#742a2a'};padding:10px;border-radius:5px;text-align:center;'><b>1. Aderência</b></div>", unsafe_allow_html=True)
+            with c_chk2: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;color:#234e52' if relatorios_identificados['Pesquisa (CSAT/IR)'] else '#fff5f5;border:1px solid #e53e3e;color:#742a2a'};padding:10px;border-radius:5px;text-align:center;'><b>2. Pesquisas</b></div>", unsafe_allow_html=True)
+            with c_chk3: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;color:#234e52' if relatorios_identificados['Chat'] else '#fff5f5;border:1px solid #e53e3e;color:#742a2a'};padding:10px;border-radius:5px;text-align:center;'><b>3. Chat</b></div>", unsafe_allow_html=True)
+            with c_chk4: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;color:#234e52' if relatorios_identificados['Voz'] else '#fff5f5;border:1px solid #e53e3e;color:#742a2a'};padding:10px;border-radius:5px;text-align:center;'><b>4. Voz</b></div>", unsafe_allow_html=True)
+            with c_chk5: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;color:#234e52' if relatorios_identificados['Retenção'] else '#fff5f5;border:1px solid #e53e3e;color:#742a2a'};padding:10px;border-radius:5px;text-align:center;'><b>5. Retenção</b></div>", unsafe_allow_html=True)
 
             st.markdown("---")
-            
-            # Validação lógica: Só habilita o botão se TODOS os 5 relatórios estiverem presentes mapeados
             todos_presentes = all(relatorios_identificados.values())
             
             if todos_presentes:
-                st.success("🎯 Sensacional! Todos os 5 relatórios obrigatórios foram auditados e validados com sucesso.")
+                st.success("🎯 Todos os 5 relatórios obrigatórios validados.")
                 if st.button("🚀 Processar e Atualizar Base Mestre AGORA", type="primary", use_container_width=True):
-                    with st.spinner(f"Processando a malha e atualizando banco de dados no GitHub..."):
+                    with st.spinner(f"Processando a malha..."):
                         try:
-                            # Coleta as instâncias validadas do dicionário
                             df_perf = pd.read_csv(relatorios_identificados["Aderência"])
                             df_ret = pd.read_csv(relatorios_identificados["Retenção"])
                             df_chat = pd.read_csv(relatorios_identificados["Chat"])
@@ -359,36 +298,24 @@ else:
                             df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
                             df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                             df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
-                            
-                            df_ret['RT geral calculado'] = df_ret.apply(
-                                lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'],
-                                axis=1
-                            ).fillna(0)
+                            df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
                             
                             df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
                             df_chat_agg = df_chat.groupby('Chave_Nome').agg({'Atendidas': 'sum', 'Tratamento médio': 'mean', 'Espera média': 'mean'}).reset_index()
                             df_chat_agg.rename(columns={'Atendidas': 'Vol. Chat', 'Tratamento médio': 'TMA Chat (ms)', 'Espera média': 'TME Chat (ms)'}, inplace=True)
                             df_chat_agg['TMA Chat (Min)'] = df_chat_agg['TMA Chat (ms)'].apply(ms_para_minutos)
-                            df_chat_agg['TME Chat (Min)'] = df_chat_agg['TME Chat (ms)'].apply(ms_para_minutos)
                             
                             df_voz['Chave_Nome'] = df_voz['Nome do agente'].astype(str).str.strip().str.upper()
                             df_voz_agg = df_voz.groupby('Chave_Nome').agg({'Atendidas': 'sum', 'Tratamento médio': 'mean', 'Espera média': 'mean'}).reset_index()
                             df_voz_agg.rename(columns={'Atendidas': 'Vol. Voz', 'Tratamento médio': 'TMA Voz (ms)', 'Espera média': 'TME Voz (ms)'}, inplace=True)
                             df_voz_agg['TMA Voz (Min)'] = df_voz_agg['TMA Voz (ms)'].apply(ms_para_minutos)
-                            df_voz_agg['TME Voz (Min)'] = df_voz_agg['TME Voz (ms)'].apply(ms_para_minutos)
                             
                             df_pesq['Chave_Nome'] = df_pesq['Atendente'].astype(str).str.strip().str.upper()
                             df_pesq['CSAT_Num'] = pd.to_numeric(df_pesq['CSAT'], errors='coerce')
-                            
-                            df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(
-                                Total_Pesq_CSAT=('CSAT_Num', 'count'),
-                                Boas_Pesq_CSAT=('CSAT_Num', lambda x: (x >= 4).sum()),
-                                Total_Pesq_IR=('IR', 'count'),
-                                Sim_Pesq_IR=('IR', lambda x: (x.astype(str).str.strip().str.upper() == 'SIM').sum())
-                            ).reset_index()
+                            df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(Total_Pesq_CSAT=('CSAT_Num', 'count'), Boas_Pesq_CSAT=('CSAT_Num', lambda x: (x >= 4).sum()), Total_Pesq_IR=('IR', 'count'), Sim_Pesq_IR=('IR', lambda x: (x.astype(str).str.strip().str.upper() == 'SIM').sum())).reset_index()
 
                             df_novo = pd.merge(df_users, df_perf, on='Chave_Nome', how='left')
-                            df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculated', 'Taxa_Retencao_Original']], on='Chave_Nome', how='left')
+                            df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculado', 'Taxa_Retencao_Original']], on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_chat_agg, on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_voz_agg, on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_pesq_agg, on='Chave_Nome', how='left')
@@ -399,28 +326,22 @@ else:
                             csv_final = df_novo.to_csv(index=False)
                             enviar_para_github("dados_consolidados_master.csv", csv_final)
                             st.cache_data.clear()
-                            st.success(f"🔥 Sucesso Absoluto! Base mestre gravada para {mes_up}/{ano_up}!")
+                            st.success("Base Mestre gravada!")
                             time.sleep(0.5)
                             st.rerun()
-                        except Exception as e:
-                            st.error(f"Erro na malha: {e}")
-            else:
-                st.warning("⚠️ O botão de processamento está travado. Por favor, certifique-se de carregar todos os 5 arquivos CSV corretos para liberar a consolidação.")
+                        except Exception as e: st.error(f"Erro: {e}")
+            else: st.warning("⚠️ Aguardando o upload dos 5 arquivos para liberar o motor.")
 
-        # ABA DASHBOARD DE INDICADORES
+        # ABA DASHBOARD
         with aba_dashboard:
-            if not base_mestre_existe:
-                st.warning("📢 Base mestre indisponível.")
-            elif not dados_carregados:
-                st.warning(f"⚠️ {erro_dados}")
+            if not base_mestre_existe: st.warning("📢 Base mestre indisponível.")
+            elif not dados_carregados: st.warning(f"⚠️ {erro_dados}")
             else:
-                # O restante do código segue idêntico, herdando a consistência dos dados validados
                 modo_visao = st.radio("Filtro de Status de Equipe:", ["Mostrar Apenas Ativos", "Mostrar Todos (Incluir Férias/Afastados)"], horizontal=True)
                 
                 if 'Status' in df_periodo.columns and modo_visao == "Mostrar Apenas Ativos":
                     df_filtrado_status = df_periodo[df_periodo['Status'].fillna('Ativo').str.strip().str.title() == 'Ativo']
-                else:
-                    df_filtrado_status = df_periodo.copy()
+                else: df_filtrado_status = df_periodo.copy()
 
                 df_calculado = df_filtrado_status.copy()
                 if 'Total_Pesq_CSAT' in df_calculado.columns:
@@ -445,35 +366,26 @@ else:
 
                 col_alerta_1, col_alerta_2, col_alerta_3 = st.columns(3)
                 with col_alerta_1:
-                    label_q = f"🔻 Qualidade: {total_desvios_qualidade} desvios na seleção" if total_desvios_qualidade > 0 else "✅ Qualidade: 100% na meta"
-                    with st.expander(label_q, expanded=False):
-                        if total_desvios_qualidade == 0: st.write("Nenhum desvio.")
-                        else:
-                            for _, row in lista_detratores_csat.iterrows(): st.markdown(f"<div class='detractor-box'>⭐ <b>{row['Nome Exibição']}</b> | CSAT: <b>{row['CSAT_Agente (%)']:.1f}%</b></div>", unsafe_allow_html=True)
-                            for _, row in lista_detratores_ir.iterrows(): st.markdown(f"<div class='detractor-box'>🎯 <b>{row['Nome Exibição']}</b> | IR: <b>{row['IR_Agente (%)']:.1f}%</b></div>", unsafe_allow_html=True)
+                    label_q = f"🔻 Qualidade: {total_desvios_qualidade} desvios" if total_desvios_qualidade > 0 else "✅ Qualidade: 100% na meta"
+                    with st.expander(label_q):
+                        for _, row in lista_detratores_csat.iterrows(): st.markdown(f"<div class='detractor-box'>⭐ <b>{row['Nome Exibição']}</b> | CSAT: <b>{row['CSAT_Agente (%)']:.1f}%</b></div>", unsafe_allow_html=True)
+                        for _, row in lista_detratores_ir.iterrows(): st.markdown(f"<div class='detractor-box'>🎯 <b>{row['Nome Exibição']}</b> | IR: <b>{row['IR_Agente (%)']:.1f}%</b></div>", unsafe_allow_html=True)
                 with col_alerta_2:
-                    label_r = f"📉 Retenção: {len(detratores_retencao)} abaixo da meta" if not detratores_retencao.empty else "✅ Retenção: 100% na meta"
-                    with st.expander(label_r, expanded=False):
-                        if detratores_retencao.empty: st.write("Nenhum desvio.")
-                        else:
-                            for _, row in detratores_retencao.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#fffaf0;border-color:#fbd38d;color:#dd6b20;'>📉 <b>{row['Nome Exibição']}</b> | Retenção: <b>{row['% Retenção']:.2f}%</b></div>", unsafe_allow_html=True)
+                    label_r = f"📉 Retenção: {len(detratores_retencao)} desvios" if not detratores_retencao.empty else "✅ Retenção: 100% na meta"
+                    with st.expander(label_r):
+                        for _, row in detratores_retencao.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#fffaf0;border-color:#fbd38d;color:#dd6b20;'>📉 <b>{row['Nome Exibição']}</b> | Ret: <b>{row['% Retenção']:.2f}%</b></div>", unsafe_allow_html=True)
                 with col_alerta_3:
-                    label_p = f"⏱️ Processos: {total_desvios_processo} desvios na seleção" if total_desvios_processo > 0 else "✅ Processos: 100% na meta"
-                    with st.expander(label_p, expanded=False):
-                        if total_desvios_processo == 0: st.write("Nenhum desvio.")
-                        else:
-                            for _, row in lista_detratores_ade.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#fffaf5;border-color:#feb2b2;color:#c53030;'>⏱️ <b>{row['Nome Exibição']}</b> | Ade: <b>{row['Aderência (%)']:.1f}%</b></div>", unsafe_allow_html=True)
-                            for _, row in lista_detratores_conf.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#fffaf5;border-color:#feb2b2;color:#c53030;'>🛡️ <b>{row['Nome Exibição']}</b> | Conf: <b>{row['Conformidade (%)']:.1f}%</b></div>", unsafe_allow_html=True)
+                    label_p = f"⏱️ Processos: {total_desvios_processo} desvios" if total_desvios_processo > 0 else "✅ Processos: 100% na meta"
+                    with st.expander(label_p):
+                        for _, row in lista_detratores_ade.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#fffaf5;border-color:#feb2b2;color:#c53030;'>⏱️ <b>{row['Nome Exibição']}</b> | Ade: <b>{row['Aderência (%)']:.1f}%</b></div>", unsafe_allow_html=True)
+                        for _, row in lista_detratores_conf.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#fffaf5;border-color:#feb2b2;color:#c53030;'>🛡️ <b>{row['Nome Exibição']}</b> | Conf: <b>{row['Conformidade (%)']:.1f}%</b></div>", unsafe_allow_html=True)
 
                 st.markdown("### 👥 Escopo da Análise")
                 agentes_lista = ["Todos"] + list(df_calculado['Nome Exibição'].dropna().unique())
                 filtro_agente = st.selectbox("Selecionar foco nominal:", agentes_lista)
                 df_final_escopo = df_calculado[df_calculado['Nome Exibição'] == filtro_agente] if filtro_agente != "Todos" else df_calculado.copy()
 
-                # RECONSTRUÇÃO COMPLETA DOS CARDS
-                st.subheader(f"🎯 Métricas Consolidadas ({filtro_agente})")
-                
-                # --- PROCESSAMENTO DOS CARDS OPERACIONAIS ---
+                # CÁLCULOS DOS CARDS
                 if 'Total_Pesq_CSAT' in df_final_escopo.columns:
                     tot_csat = df_final_escopo['Total_Pesq_CSAT'].sum()
                     boas_csat = df_final_escopo['Boas_Pesq_CSAT'].sum()
@@ -491,14 +403,11 @@ else:
                 
                 if 'Taxa_Retencao_Original' in df_final_escopo.columns:
                     if filtro_agente == "Todos":
-                        col_total_nome = 'RT geral calculated' if 'RT geral calculated' in df_final_escopo.columns else 'RT geral calculado'
-                        if col_total_nome not in df_final_escopo.columns: col_total_nome = 'RT geral calculado'
+                        col_total_nome = 'RT geral calculado' if 'RT geral calculado' in df_final_escopo.columns else 'RT geral calculado'
                         total_calculado_equipe = df_final_escopo[col_total_nome].sum()
                         v_retencao = (total_rt_valido / total_calculado_equipe * 100) if total_calculado_equipe > 0 else 0.0
-                    else:
-                        v_retencao = df_final_escopo['Taxa_Retencao_Original'].iloc[0] if not df_final_escopo.empty else 0.0
-                else:
-                    v_retencao = 0.0
+                    else: v_retencao = df_final_escopo['Taxa_Retencao_Original'].iloc[0] if not df_final_escopo.empty else 0.0
+                else: v_retencao = 0.0
 
                 v_cancelamento = 100 - v_retencao if v_retencao > 0 else 0.0
                 total_vol_chat = df_final_escopo['Vol. Chat'].sum()
@@ -506,6 +415,7 @@ else:
                 total_vol_voz = df_final_escopo['Vol. Voz'].sum()
                 tma_voz_medio = df_final_escopo['TMA Voz (Min)'].mean()
 
+                st.subheader(f"🎯 Métricas Consolidadas ({filtro_agente})")
                 c1, c2, c3, c4, c5 = st.columns(5)
                 with c1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>⭐ CSAT Ponderado</div><div class='kpi-value'>{v_csat:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
                 with c2: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>🎯 Índice IR</div><div class='kpi-value'>{v_ir:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_IR:.0f}%</div></div>", unsafe_allow_html=True)
@@ -522,43 +432,81 @@ else:
 
                 st.markdown("---")
 
-                # GRÁFICOS
                 if filtro_agente == "Todos":
-                    st.subheader("📊 Motor de Auditoria Gráfica")
-                    indicador_grafico = st.selectbox("Selecione o Indicador para Analisar o Ranking de Oportunidades:", ["CSAT", "Índice IR", "Taxa de Retenção", "Aderência", "Conformidade", "TMA Chat", "TMA Voz"])
+                    st.subheader("📊 Central de Auditoria Visual de Indicadores")
+                    tab_graf_1, tab_graf_2, tab_graf_3 = st.tabs(["🏅 Rankings de Qualidade & Retenção", "⏱️ Rankings de Processos & Eficiência", "💬 Volumetria de Atendimentos"])
                     df_chart_base = df_final_escopo.dropna(subset=['Nome Exibição'])
                     
-                    if indicador_grafico == "CSAT":
-                        fig = px.bar(df_chart_base.sort_values(by='CSAT_Agente (%)', ascending=True).head(12), x='CSAT_Agente (%)', y='Nome Exibição', orientation='h', title="⭐ CSAT", color='CSAT_Agente (%)', color_continuous_scale='Reds_r')
-                        fig.add_vline(x=META_CSAT, line_dash="dash", line_color="green")
-                    elif indicador_grafico == "Índice IR":
-                        fig = px.bar(df_chart_base.sort_values(by='IR_Agente (%)', ascending=True).head(12), x='IR_Agente (%)', y='Nome Exibição', orientation='h', title="🎯 IR", color='IR_Agente (%)', color_continuous_scale='Reds_r')
-                        fig.add_vline(x=META_IR, line_dash="dash", line_color="green")
-                    elif indicador_grafico == "Taxa de Retenção":
-                        fig = px.bar(df_chart_base.sort_values(by='% Retenção', ascending=True).head(12), x='% Retenção', y='Nome Exibição', orientation='h', title="📈 Retenção", color='% Retenção', color_continuous_scale='Reds_r')
-                        fig.add_vline(x=META_RETENCAO, line_dash="dash", line_color="green")
-                    elif indicador_grafico == "Aderência":
-                        fig = px.bar(df_chart_base.sort_values(by='Aderência (%)', ascending=True).head(12), x='Aderência (%)', y='Nome Exibição', orientation='h', title="⏱️ Aderência", color='Aderência (%)', color_continuous_scale='Reds_r')
-                        fig.add_vline(x=META_ADERENCIA, line_dash="dash", line_color="green")
-                    elif indicador_grafico == "Conformidade":
-                        fig = px.bar(df_chart_base.sort_values(by='Conformidade (%)', ascending=True).head(12), x='Conformidade (%)', y='Nome Exibição', orientation='h', title="🛡️ Conformidade", color='Conformidade (%)', color_continuous_scale='Reds_r')
-                        fig.add_vline(x=META_CONFORMIDADE, line_dash="dash", line_color="green")
-                    elif indicador_grafico == "TMA Chat":
-                        fig = px.bar(df_chart_base.sort_values(by='TMA Chat (Min)', ascending=False).head(12), x='TMA Chat (Min)', y='Nome Exibição', orientation='h', title="⏳ TMA Chat", color='TMA Chat (Min)', color_continuous_scale='Oranges')
-                    elif indicador_grafico == "TMA Voz":
-                        fig = px.bar(df_chart_base.sort_values(by='TMA Voz (Min)', ascending=False).head(12), x='TMA Voz (Min)', y='Nome Exibição', orientation='h', title="⏳ TMA Voz", color='TMA Voz (Min)', color_continuous_scale='Oranges')
-                    
-                    fig.update_layout(yaxis={'categoryorder': 'total ascending' if indicador_grafico not in ["TMA Chat", "TMA Voz"] else 'total descending'}, coloraxis_showscale=False)
-                    st.plotly_chart(fig, use_container_width=True)
+                    with tab_graf_1:
+                        cg1, cg2, cg3 = st.columns(3)
+                        with cg1:
+                            fig_csat = px.bar(df_chart_base.sort_values(by='CSAT_Agente (%)', ascending=True).head(10), x='CSAT_Agente (%)', y='Nome Exibição', orientation='h', title="⭐ CSAT (Detratores)", color='CSAT_Agente (%)', color_continuous_scale='Reds_r')
+                            fig_csat.update_yaxes(autorange="reversed")
+                            fig_csat.add_vline(x=META_CSAT, line_dash="dash", line_color="green")
+                            st.plotly_chart(fig_csat, use_container_width=True)
+                        with cg2:
+                            fig_ir = px.bar(df_chart_base.sort_values(by='IR_Agente (%)', ascending=True).head(10), x='IR_Agente (%)', y='Nome Exibição', orientation='h', title="🎯 Índice IR por Operador", color='IR_Agente (%)', color_continuous_scale='Reds_r')
+                            fig_ir.update_yaxes(autorange="reversed")
+                            fig_ir.add_vline(x=META_IR, line_dash="dash", line_color="green")
+                            st.plotly_chart(fig_ir, use_container_width=True)
+                        with cg3:
+                            fig_ret = px.bar(df_chart_base.sort_values(by='% Retenção', ascending=True).head(10), x='% Retenção', y='Nome Exibição', orientation='h', title="📈 Retenção", color='% Retenção', color_continuous_scale='Reds_r')
+                            fig_ret.update_yaxes(autorange="reversed")
+                            fig_ret.add_vline(x=META_RETENCAO, line_dash="dash", line_color="green")
+                            st.plotly_chart(fig_ret, use_container_width=True)
 
-                # TABELA NOMINAL
+                    with tab_graf_2:
+                        cx1, cx2, cx3, cx4 = st.columns(4)
+                        with cx1:
+                            fig_ade = px.bar(df_chart_base.sort_values(by='Aderência (%)', ascending=True).head(10), x='Aderência (%)', y='Nome Exibição', orientation='h', title="⏱️ Menores Aderências", color='Aderência (%)', color_continuous_scale='Reds_r')
+                            fig_ade.update_yaxes(autorange="reversed")
+                            fig_ade.add_vline(x=META_ADERENCIA, line_dash="dash", line_color="green")
+                            st.plotly_chart(fig_ade, use_container_width=True)
+                        with cx2:
+                            fig_conf = px.bar(df_chart_base.sort_values(by='Conformidade (%)', ascending=True).head(10), x='Conformidade (%)', y='Nome Exibição', orientation='h', title="🛡️ Menores Conformidades", color='Conformidade (%)', color_continuous_scale='Reds_r')
+                            fig_conf.update_yaxes(autorange="reversed")
+                            fig_conf.add_vline(x=META_CONFORMIDADE, line_dash="dash", line_color="green")
+                            st.plotly_chart(fig_conf, use_container_width=True)
+                        with cx3:
+                            fig_tmach = px.bar(df_chart_base.sort_values(by='TMA Chat (Min)', ascending=False).head(10), x='TMA Chat (Min)', y='Nome Exibição', orientation='h', title="⏳ Maiores TMAs Chat", color='TMA Chat (Min)', color_continuous_scale='Oranges')
+                            fig_tmach.update_yaxes(autorange="reversed")
+                            st.plotly_chart(fig_tmach, use_container_width=True)
+                        with cx4:
+                            fig_tmavz = px.bar(df_chart_base.sort_values(by='TMA Voz (Min)', ascending=False).head(10), x='TMA Voz (Min)', y='Nome Exibição', orientation='h', title="⏳ Maiores TMAs Voz", color='TMA Voz (Min)', color_continuous_scale='Oranges')
+                            fig_tmavz.update_yaxes(autorange="reversed")
+                            st.plotly_chart(fig_tmavz, use_container_width=True)
+
+                    with tab_graf_3:
+                        cv1, cv2 = st.columns(2)
+                        with cv1:
+                            fig_volch = px.bar(df_chart_base.sort_values(by='Vol. Chat', ascending=False).head(12), x='Vol. Chat', y='Nome Exibição', orientation='h', title="💬 Volume Chats por Operador", color='Vol. Chat', color_continuous_scale='Blues')
+                            fig_volch.update_yaxes(autorange="reversed")
+                            st.plotly_chart(fig_volch, use_container_width=True)
+                        with cv2:
+                            fig_volvz = px.bar(df_chart_base.sort_values(by='Vol. Voz', ascending=False).head(12), x='Vol. Voz', y='Nome Exibição', orientation='h', title="📞 Volume Voz por Operador", color='Vol. Voz', color_continuous_scale='Teal')
+                            fig_volvz.update_yaxes(autorange="reversed")
+                            st.plotly_chart(fig_volvz, use_container_width=True)
+                    st.markdown("---")
+
+                # ==========================================
+                # FIX DO NAMEERROR: DEFINIÇÃO LOCAL DAS COLUNAS E ESTILOS
+                # ==========================================
+                st.subheader("👥 Detalhamento Operacional por Colaborador")
+                colunas_tabela = ['Nome Exibição', 'Status' if 'Status' in df_final_escopo.columns else 'Nome Exibição', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Aderência (%)', 'Conformidade (%)', 'Vol. Chat', 'TMA Chat (Min)', 'Vol. Voz', 'TMA Voz (Min)', 'RT geral valido', '% Retenção', '% Cancelamento']
+                colunas_tabela = list(dict.fromkeys(colunas_tabela))
+                
+                def estilizar_linhas_status(row):
+                    status_val = str(row['Status']).strip().lower() if 'Status' in row else 'ativo'
+                    if status_val != 'ativo':
+                        return ['background-color: #f1f3f5; color: #adb5bd; font-style: italic;'] * len(row)
+                    return [''] * len(row)
+
                 st.dataframe(df_final_escopo[colunas_tabela].style.apply(estilizar_linhas_status, axis=1).format({
                     'CSAT_Agente (%)': '{:.1f}%', 'IR_Agente (%)': '{:.1f}%', 'Aderência (%)': '{:.1f}%', 'Conformidade (%)': '{:.1f}%',
                     '% Retenção': '{:.2f}%', '% Cancelamento': '{:.2f}%', 'Vol. Chat': '{:,.0f}', 'TMA Chat (Min)': '{:.1f}m',
                     'Vol. Voz': '{:,.0f}', 'TMA Voz (Min)': '{:.1f}m', 'RT geral valido': '{:,.0f}'
                 }), use_container_width=True)
 
-    # VISÃO AGENTE NOMINAL LOGADO
+    # VISÃO AGENTE
     elif st.session_state.perfil == "Agente":
-        # (Mantém a integridade e segurança nativa da exibição para o agente)
         pass
