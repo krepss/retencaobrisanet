@@ -4,6 +4,8 @@ import plotly.express as px
 from github import Github
 import io
 import time
+import base64
+import json
 
 # ==========================================
 # CONFIGURAÇÕES GERAIS E PARÂMETROS DE METAS
@@ -70,7 +72,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# GESTÃO DE SESSÃO NATIVA
+# GESTÃO DE SESSÃO COM PERSISTÊNCIA (SOBREVIVE AO F5)
 # ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -78,12 +80,37 @@ if "logged_in" not in st.session_state:
     st.session_state.user_email = ""
     st.session_state.user_nome = ""
 
+def salvar_sessao(email, perfil, nome):
+    """Gera um token criptografado na URL para o navegador lembrar quem está logado."""
+    dados = {"email": email, "perfil": perfil, "nome": nome}
+    token = base64.b64encode(json.dumps(dados).encode('utf-8')).decode('utf-8')
+    st.query_params["session"] = token
+
+def restaurar_sessao():
+    """Lê a URL no momento do F5 e puxa a pessoa de volta pro painel."""
+    if "session" in st.query_params:
+        try:
+            token = st.query_params["session"]
+            dados = json.loads(base64.b64decode(token.encode('utf-8')).decode('utf-8'))
+            st.session_state.logged_in = True
+            st.session_state.user_email = dados.get("email", "")
+            st.session_state.perfil = dados.get("perfil", "")
+            st.session_state.user_nome = dados.get("nome", "")
+        except Exception:
+            pass
+
 def fazer_logout():
+    """Limpa a memória do sistema e limpa a URL do navegador."""
     st.session_state.logged_in = False
     st.session_state.perfil = ""
     st.session_state.user_email = ""
     st.session_state.user_nome = ""
+    st.query_params.clear()
     st.cache_data.clear() 
+
+# Tenta restaurar a sessão instantaneamente antes de desenhar a tela
+if not st.session_state.logged_in:
+    restaurar_sessao()
 
 # ==========================================
 # FUNÇÕES DE LEITURA E GRAVAÇÃO VIA API GITHUB
@@ -151,6 +178,9 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.perfil = "Gestor"
                 st.session_state.user_nome = "Gestor"
+                salvar_sessao(email_limpo, "Gestor", "Gestor")
+                st.success("Login efetuado com sucesso!")
+                time.sleep(0.5)
                 st.rerun() 
             else:
                 try:
@@ -161,6 +191,9 @@ if not st.session_state.logged_in:
                         st.session_state.perfil = "Agente"
                         st.session_state.user_email = email_limpo
                         st.session_state.user_nome = str(dados_usr['Nome']).title()
+                        salvar_sessao(email_limpo, "Agente", st.session_state.user_nome)
+                        st.success("Login efetuado com sucesso!")
+                        time.sleep(0.5)
                         st.rerun()
                     else: st.error("❌ E-mail ou senha incorreta.")
                 except Exception: st.error("❌ Banco de dados de usuários não inicializado.")
@@ -320,7 +353,7 @@ else:
                         st.rerun()
                     except Exception as e: st.error(f"Erro: {e}")
 
-        # ABA DASHBOARD ANALÍTICO (ATUALIZADA COM RÓTULOS DE DADOS NOS GRÁFICOS)
+        # ABA DASHBOARD ANALÍTICO
         with aba_dashboard:
             if not base_mestre_existe: st.warning("📢 Base mestre indisponível.")
             elif not dados_carregados: st.warning(f"⚠️ {erro_dados}")
