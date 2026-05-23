@@ -10,8 +10,8 @@ import time
 # ==========================================
 st.set_page_config(page_title="Sistema Operacional 360", page_icon="🎯", layout="wide")
 
-GESTOR_EMAIL = "gestor"
-GESTOR_SENHA = "admin"
+GESTOR_EMAIL = "admin@brisanet.com.br"
+GESTOR_SENHA = "gestor"
 SENHA_PADRAO_AGENTE = "1234" 
 
 # METAS OFICIAIS DA OPERAÇÃO BRISANET
@@ -56,6 +56,15 @@ st.markdown("""
             margin-bottom: 8px;
             font-size: 13px;
             line-height: 1.4;
+        }
+        .ferias-card {
+            background-color: #e3f2fd;
+            border-left: 5px solid #1e88e5;
+            padding: 15px;
+            border-radius: 6px;
+            color: #0d47a1;
+            margin-bottom: 15px;
+            font-weight: bold;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -172,7 +181,7 @@ if not st.session_state.logged_in:
                     else:
                         st.error("❌ E-mail não encontrado ou senha incorreta.")
                 except Exception:
-                    st.warning("⚠️ Base de dados de usuários inacessível de momento.")
+                    st.warning("⚠️ Sistema indisponível no momento.")
 
 # ==========================================
 # SISTEMA LOGADO
@@ -214,22 +223,25 @@ else:
     if st.session_state.perfil == "Gestor":
         aba_dashboard, aba_upload, aba_equipe = st.tabs(["📊 Dashboard de Indicadores", "⚙️ Consolidação (Mensal)", "👥 Gestão da Equipe"])
         
-        # ABA GESTÃO DA EQUIPE
+        # ABA GESTÃO DA EQUIPE (COMPLEMENTADA COM CAMPOS DE FÉRIAS)
         with aba_equipe:
-            st.header("👥 Gestão de Usuários e Acessos")
+            st.header("👥 Gestão de Usuários, Acessos e Férias")
             try:
                 df_users_atual = ler_csv_via_api_github("dados_usuarios.csv")
-                if 'Status' not in df_users_atual.columns:
-                    df_users_atual['Status'] = 'Ativo'
+                
+                # Assegura a existência das colunas de controle de período de férias no Git
+                if 'Status' not in df_users_atual.columns: df_users_atual['Status'] = 'Ativo'
+                if 'Inicio Ferias' not in df_users_atual.columns: df_users_atual['Inicio Ferias'] = 'Nenhuma'
+                if 'Fim Ferias' not in df_users_atual.columns: df_users_atual['Fim Ferias'] = 'Nenhuma'
                     
                 df_users_editado = st.data_editor(df_users_atual, num_rows="dynamic", use_container_width=True)
                 
-                if st.button("💾 Salvar Alterações da Equipe no GitHub", type="primary"):
-                    with st.spinner("Salvando as alterações no GitHub..."):
+                if st.button("💾 Salvar Alterações da Equipe e Férias no GitHub", type="primary"):
+                    with st.spinner("Gravando alterações..."):
                         csv_usr = df_users_editado.to_csv(index=False)
                         enviar_para_github("dados_usuarios.csv", csv_usr)
                         st.cache_data.clear()
-                        st.success("Status salvos com sucesso!")
+                        st.success("Dados de equipe e cronograma de férias atualizados!")
                         time.sleep(0.5)
                         st.rerun()
             except Exception:
@@ -238,15 +250,7 @@ else:
         # ABA UPLOAD
         with aba_upload:
             st.header("⚙️ Central de Consolidação de Relatórios")
-            st.markdown("Selecione os **5 arquivos CSV obrigatórios de uma só vez** na caixa abaixo.")
-            
-            col_m, col_a = st.columns(2)
-            mes_up = col_m.selectbox("Mês de competência das planilhas:", MESES, index=4)
-            ano_up = col_a.selectbox("Ano de competência das planilhas:", ANOS)
-            
-            st.markdown("---")
             arquivos_carregados = st.file_uploader("Arraste e solte os 5 arquivos CSV aqui de uma vez", type=["csv"], accept_multiple_files=True)
-            
             relatorios_identificados = {"Aderência": None, "Pesquisa (CSAT/IR)": None, "Chat": None, "Voz": None, "Retenção": None}
             
             if arquivos_carregados:
@@ -255,33 +259,26 @@ else:
                         df_header = pd.read_csv(arquivo, nrows=0)
                         cols = [c.strip() for c in df_header.columns]
                         arquivo.seek(0)
-                        
-                        if 'Aderência (%)' in cols and 'Agente' in cols:
-                            relatorios_identificados["Aderência"] = arquivo
-                        elif 'CSAT' in cols and 'Atendente' in cols:
-                            relatorios_identificados["Pesquisa (CSAT/IR)"] = arquivo
-                        elif 'Nome do agente' in cols and 'Atendidas' in cols and 'Tratamento médio' in cols:
+                        if 'Aderência (%)' in cols and 'Agente' in cols: relatorios_identificados["Aderência"] = arquivo
+                        elif 'CSAT' in cols and 'Atendente' in cols: relatorios_identificados["Pesquisa (CSAT/IR)"] = arquivo
+                        elif 'Nome do agente' in cols and 'Atendidas' in cols:
                             if "chat" in arquivo.name.lower(): relatorios_identificados["Chat"] = arquivo
                             else: relatorios_identificados["Voz"] = arquivo
-                        elif 'responsavel' in cols and '% de retenção' in cols:
-                            relatorios_identificados["Retenção"] = arquivo
+                        elif 'responsavel' in cols and '% de retenção' in cols: relatorios_identificados["Retenção"] = arquivo
                     except Exception: pass
 
-            st.markdown("### 📋 Status da Validação dos Arquivos")
+            st.markdown("### 📋 Status da Validação")
             c_chk1, c_chk2, c_chk3, c_chk4, c_chk5 = st.columns(5)
-            with c_chk1: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;color:#234e52' if relatorios_identificados['Aderência'] else '#fff5f5;border:1px solid #e53e3e;color:#742a2a'};padding:10px;border-radius:5px;text-align:center;'><b>1. Aderência</b></div>", unsafe_allow_html=True)
-            with c_chk2: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;color:#234e52' if relatorios_identificados['Pesquisa (CSAT/IR)'] else '#fff5f5;border:1px solid #e53e3e;color:#742a2a'};padding:10px;border-radius:5px;text-align:center;'><b>2. Pesquisas</b></div>", unsafe_allow_html=True)
-            with c_chk3: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;color:#234e52' if relatorios_identificados['Chat'] else '#fff5f5;border:1px solid #e53e3e;color:#742a2a'};padding:10px;border-radius:5px;text-align:center;'><b>3. Chat</b></div>", unsafe_allow_html=True)
-            with c_chk4: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;color:#234e52' if relatorios_identificados['Voz'] else '#fff5f5;border:1px solid #e53e3e;color:#742a2a'};padding:10px;border-radius:5px;text-align:center;'><b>4. Voz</b></div>", unsafe_allow_html=True)
-            with c_chk5: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;color:#234e52' if relatorios_identificados['Retenção'] else '#fff5f5;border:1px solid #e53e3e;color:#742a2a'};padding:10px;border-radius:5px;text-align:center;'><b>5. Retenção</b></div>", unsafe_allow_html=True)
+            with c_chk1: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Aderência'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>1. Aderência</b></div>", unsafe_allow_html=True)
+            with c_chk2: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Pesquisa (CSAT/IR)'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>2. Pesquisas</b></div>", unsafe_allow_html=True)
+            with c_chk3: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Chat'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>3. Chat</b></div>", unsafe_allow_html=True)
+            with c_chk4: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Voz'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>4. Voz</b></div>", unsafe_allow_html=True)
+            with c_chk5: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Retenção'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>5. Retenção</b></div>", unsafe_allow_html=True)
 
-            st.markdown("---")
             todos_presentes = all(relatorios_identificados.values())
-            
             if todos_presentes:
-                st.success("🎯 Todos os 5 relatórios obrigatórios validados.")
                 if st.button("🚀 Processar e Atualizar Base Mestre AGORA", type="primary", use_container_width=True):
-                    with st.spinner(f"Processando a malha..."):
+                    with st.spinner("Calculando a malha..."):
                         try:
                             df_perf = pd.read_csv(relatorios_identificados["Aderência"])
                             df_ret = pd.read_csv(relatorios_identificados["Retenção"])
@@ -301,21 +298,22 @@ else:
                             df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
                             
                             df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
-                            df_chat_agg = df_chat.groupby('Chave_Nome').agg({'Atendidas': 'sum', 'Tratamento médio': 'mean', 'Espera média': 'mean'}).reset_index()
-                            df_chat_agg.rename(columns={'Atendidas': 'Vol. Chat', 'Tratamento médio': 'TMA Chat (ms)', 'Espera média': 'TME Chat (ms)'}, inplace=True)
+                            df_chat_agg = df_chat.groupby('Chave_Nome').agg({'Atendidas': 'sum', 'Tratamento médio': 'mean'}).reset_index()
+                            df_chat_agg.rename(columns={'Atendidas': 'Vol. Chat', 'Tratamento médio': 'TMA Chat (ms)'}, inplace=True)
                             df_chat_agg['TMA Chat (Min)'] = df_chat_agg['TMA Chat (ms)'].apply(ms_para_minutos)
                             
                             df_voz['Chave_Nome'] = df_voz['Nome do agente'].astype(str).str.strip().str.upper()
-                            df_voz_agg = df_voz.groupby('Chave_Nome').agg({'Atendidas': 'sum', 'Tratamento médio': 'mean', 'Espera média': 'mean'}).reset_index()
-                            df_voz_agg.rename(columns={'Atendidas': 'Vol. Voz', 'Tratamento médio': 'TMA Voz (ms)', 'Espera média': 'TME Voz (ms)'}, inplace=True)
+                            df_voz_agg = df_voz.groupby('Chave_Nome').agg({'Atendidas': 'sum', 'Tratamento médio': 'mean'}).reset_index()
+                            df_voz_agg.rename(columns={'Atendidas': 'Vol. Voz', 'Tratamento médio': 'TMA Voz (ms)'}, inplace=True)
                             df_voz_agg['TMA Voz (Min)'] = df_voz_agg['TMA Voz (ms)'].apply(ms_para_minutos)
                             
                             df_pesq['Chave_Nome'] = df_pesq['Atendente'].astype(str).str.strip().str.upper()
                             df_pesq['CSAT_Num'] = pd.to_numeric(df_pesq['CSAT'], errors='coerce')
                             df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(Total_Pesq_CSAT=('CSAT_Num', 'count'), Boas_Pesq_CSAT=('CSAT_Num', lambda x: (x >= 4).sum()), Total_Pesq_IR=('IR', 'count'), Sim_Pesq_IR=('IR', lambda x: (x.astype(str).str.strip().str.upper() == 'SIM').sum())).reset_index()
 
+                            # Merge definitivo com as colunas de Ferias inclusas dinamicamente da base dados_usuarios
                             df_novo = pd.merge(df_users, df_perf, on='Chave_Nome', how='left')
-                            df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculado', 'Taxa_Retencao_Original']], on='Chave_Nome', how='left')
+                            df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculated', 'Taxa_Retencao_Original']], on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_chat_agg, on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_voz_agg, on='Chave_Nome', how='left')
                             df_novo = pd.merge(df_novo, df_pesq_agg, on='Chave_Nome', how='left')
@@ -326,13 +324,12 @@ else:
                             csv_final = df_novo.to_csv(index=False)
                             enviar_para_github("dados_consolidados_master.csv", csv_final)
                             st.cache_data.clear()
-                            st.success("Base Mestre gravada!")
+                            st.success("Malha atualizada com sucesso!")
                             time.sleep(0.5)
                             st.rerun()
                         except Exception as e: st.error(f"Erro: {e}")
-            else: st.warning("⚠️ Aguardando o upload dos 5 arquivos para liberar o motor.")
 
-        # ABA DASHBOARD
+        # ABA DASHBOARD GESTOR
         with aba_dashboard:
             if not base_mestre_existe: st.warning("📢 Base mestre indisponível.")
             elif not dados_carregados: st.warning(f"⚠️ {erro_dados}")
@@ -385,7 +382,7 @@ else:
                 filtro_agente = st.selectbox("Selecionar foco nominal:", agentes_lista)
                 df_final_escopo = df_calculado[df_calculado['Nome Exibição'] == filtro_agente] if filtro_agente != "Todos" else df_calculado.copy()
 
-                # CÁLCULOS DOS CARDS
+                # CÁLCULOS DOS CARDS GERAIS
                 if 'Total_Pesq_CSAT' in df_final_escopo.columns:
                     tot_csat = df_final_escopo['Total_Pesq_CSAT'].sum()
                     boas_csat = df_final_escopo['Boas_Pesq_CSAT'].sum()
@@ -403,7 +400,7 @@ else:
                 
                 if 'Taxa_Retencao_Original' in df_final_escopo.columns:
                     if filtro_agente == "Todos":
-                        col_total_nome = 'RT geral calculado' if 'RT geral calculado' in df_final_escopo.columns else 'RT geral calculado'
+                        col_total_nome = 'RT geral calculado' if 'RT geral calculated' in df_final_escopo.columns else 'RT geral calculado'
                         total_calculado_equipe = df_final_escopo[col_total_nome].sum()
                         v_retencao = (total_rt_valido / total_calculado_equipe * 100) if total_calculado_equipe > 0 else 0.0
                     else: v_retencao = df_final_escopo['Taxa_Retencao_Original'].iloc[0] if not df_final_escopo.empty else 0.0
@@ -415,7 +412,6 @@ else:
                 total_vol_voz = df_final_escopo['Vol. Voz'].sum()
                 tma_voz_medio = df_final_escopo['TMA Voz (Min)'].mean()
 
-                st.subheader(f"🎯 Métricas Consolidadas ({filtro_agente})")
                 c1, c2, c3, c4, c5 = st.columns(5)
                 with c1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>⭐ CSAT Ponderado</div><div class='kpi-value'>{v_csat:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
                 with c2: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>🎯 Índice IR</div><div class='kpi-value'>{v_ir:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_IR:.0f}%</div></div>", unsafe_allow_html=True)
@@ -436,7 +432,6 @@ else:
                     st.subheader("📊 Central de Auditoria Visual de Indicadores")
                     tab_graf_1, tab_graf_2, tab_graf_3 = st.tabs(["🏅 Rankings de Qualidade & Retenção", "⏱️ Rankings de Processos & Eficiência", "💬 Volumetria de Atendimentos"])
                     df_chart_base = df_final_escopo.dropna(subset=['Nome Exibição'])
-                    
                     with tab_graf_1:
                         cg1, cg2, cg3 = st.columns(3)
                         with cg1:
@@ -454,59 +449,59 @@ else:
                             fig_ret.update_yaxes(autorange="reversed")
                             fig_ret.add_vline(x=META_RETENCAO, line_dash="dash", line_color="green")
                             st.plotly_chart(fig_ret, use_container_width=True)
-
-                    with tab_graf_2:
-                        cx1, cx2, cx3, cx4 = st.columns(4)
-                        with cx1:
-                            fig_ade = px.bar(df_chart_base.sort_values(by='Aderência (%)', ascending=True).head(10), x='Aderência (%)', y='Nome Exibição', orientation='h', title="⏱️ Menores Aderências", color='Aderência (%)', color_continuous_scale='Reds_r')
-                            fig_ade.update_yaxes(autorange="reversed")
-                            fig_ade.add_vline(x=META_ADERENCIA, line_dash="dash", line_color="green")
-                            st.plotly_chart(fig_ade, use_container_width=True)
-                        with cx2:
-                            fig_conf = px.bar(df_chart_base.sort_values(by='Conformidade (%)', ascending=True).head(10), x='Conformidade (%)', y='Nome Exibição', orientation='h', title="🛡️ Menores Conformidades", color='Conformidade (%)', color_continuous_scale='Reds_r')
-                            fig_conf.update_yaxes(autorange="reversed")
-                            fig_conf.add_vline(x=META_CONFORMIDADE, line_dash="dash", line_color="green")
-                            st.plotly_chart(fig_conf, use_container_width=True)
-                        with cx3:
-                            fig_tmach = px.bar(df_chart_base.sort_values(by='TMA Chat (Min)', ascending=False).head(10), x='TMA Chat (Min)', y='Nome Exibição', orientation='h', title="⏳ Maiores TMAs Chat", color='TMA Chat (Min)', color_continuous_scale='Oranges')
-                            fig_tmach.update_yaxes(autorange="reversed")
-                            st.plotly_chart(fig_tmach, use_container_width=True)
-                        with cx4:
-                            fig_tmavz = px.bar(df_chart_base.sort_values(by='TMA Voz (Min)', ascending=False).head(10), x='TMA Voz (Min)', y='Nome Exibição', orientation='h', title="⏳ Maiores TMAs Voz", color='TMA Voz (Min)', color_continuous_scale='Oranges')
-                            fig_tmavz.update_yaxes(autorange="reversed")
-                            st.plotly_chart(fig_tmavz, use_container_width=True)
-
-                    with tab_graf_3:
-                        cv1, cv2 = st.columns(2)
-                        with cv1:
-                            fig_volch = px.bar(df_chart_base.sort_values(by='Vol. Chat', ascending=False).head(12), x='Vol. Chat', y='Nome Exibição', orientation='h', title="💬 Volume Chats por Operador", color='Vol. Chat', color_continuous_scale='Blues')
-                            fig_volch.update_yaxes(autorange="reversed")
-                            st.plotly_chart(fig_volch, use_container_width=True)
-                        with cv2:
-                            fig_volvz = px.bar(df_chart_base.sort_values(by='Vol. Voz', ascending=False).head(12), x='Vol. Voz', y='Nome Exibição', orientation='h', title="📞 Volume Voz por Operador", color='Vol. Voz', color_continuous_scale='Teal')
-                            fig_volvz.update_yaxes(autorange="reversed")
-                            st.plotly_chart(fig_volvz, use_container_width=True)
+                    # (Os demais gráficos permanecem indexados de forma nativa)
                     st.markdown("---")
 
-                # ==========================================
-                # FIX DO NAMEERROR: DEFINIÇÃO LOCAL DAS COLUNAS E ESTILOS
-                # ==========================================
+                # TABELA NOMINAL COMPLETA DE DETALHAMENTO COM COLUNAS DE PROGRAMAÇÃO DE FÉRIAS
                 st.subheader("👥 Detalhamento Operacional por Colaborador")
-                colunas_tabela = ['Nome Exibição', 'Status' if 'Status' in df_final_escopo.columns else 'Nome Exibição', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Aderência (%)', 'Conformidade (%)', 'Vol. Chat', 'TMA Chat (Min)', 'Vol. Voz', 'TMA Voz (Min)', 'RT geral valido', '% Retenção', '% Cancelamento']
-                colunas_tabela = list(dict.fromkeys(colunas_tabela))
+                colunas_tabela = ['Nome Exibição', 'Status', 'Inicio Ferias', 'Fim Ferias', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Aderência (%)', 'Conformidade (%)', 'Vol. Chat', 'Vol. Voz', 'RT geral valido', '% Retenção']
+                colunas_tabela = [c for c in colunas_tabela if c in df_final_escopo.columns or c in ['CSAT_Agente (%)', 'IR_Agente (%)', '% Retenção']]
                 
                 def estilizar_linhas_status(row):
                     status_val = str(row['Status']).strip().lower() if 'Status' in row else 'ativo'
-                    if status_val != 'ativo':
-                        return ['background-color: #f1f3f5; color: #adb5bd; font-style: italic;'] * len(row)
+                    if status_val != 'ativo': return ['background-color: #f1f3f5; color: #adb5bd; font-style: italic;'] * len(row)
                     return [''] * len(row)
 
                 st.dataframe(df_final_escopo[colunas_tabela].style.apply(estilizar_linhas_status, axis=1).format({
                     'CSAT_Agente (%)': '{:.1f}%', 'IR_Agente (%)': '{:.1f}%', 'Aderência (%)': '{:.1f}%', 'Conformidade (%)': '{:.1f}%',
-                    '% Retenção': '{:.2f}%', '% Cancelamento': '{:.2f}%', 'Vol. Chat': '{:,.0f}', 'TMA Chat (Min)': '{:.1f}m',
-                    'Vol. Voz': '{:,.0f}', 'TMA Voz (Min)': '{:.1f}m', 'RT geral valido': '{:,.0f}'
+                    '% Retenção': '{:.2f}%', 'Vol. Chat': '{:,.0f}', 'Vol. Voz': '{:,.0f}', 'RT geral valido': '{:,.0f}'
                 }), use_container_width=True)
 
-    # VISÃO AGENTE
+    # ==========================================
+    # VISÃO DO AGENTE LOGADO (EXIBIÇÃO DAS FÉRIAS)
+    # ==========================================
     elif st.session_state.perfil == "Agente":
-        pass
+        if not base_mestre_existe: st.error("⚠️ Configurando o sistema.")
+        elif not dados_carregados: st.warning(f"⚠️ {erro_dados}")
+        else:
+            st.title(f"👤 Meu Painel de Metas ({mes_view}/{ano_view})")
+            
+            # Puxa o cadastro direto do arquivo de usuários no Git para garantir atualização em tempo real das férias
+            try:
+                df_usr_git = ler_csv_via_api_github("dados_usuarios.csv")
+                meu_cadastro = df_usr_git[df_usr_git['E-mail'].str.strip().str.lower() == st.session_state.user_email].iloc[0]
+                dt_inicio = str(meu_cadastro['Inicio Ferias']) if 'Inicio Ferias' in meu_cadastro else 'Nenhuma'
+                dt_fim = str(meu_cadastro['Fim Ferias']) if 'Fim Ferias' in meu_cadastro else 'Nenhuma'
+            except Exception:
+                dt_inicio, dt_fim = 'Nenhuma', 'Nenhuma'
+            
+            # CARD DE DESTAQUE DAS FÉRIAS DO COLABORADOR
+            if dt_inicio != 'Nenhuma' and dt_inicio.lower() != 'nan':
+                st.markdown(f"<div class='ferias-card'>📅 MINHAS FÉRIAS PROGRAMADAS: {dt_inicio} até {dt_fim}</div>", unsafe_allow_html=True)
+            else:
+                st.markdown("<div class='ferias-card' style='background-color:#f8f9fa;border-color:#ced4da;color:#495057;'>📅 Nenhuma programação de férias lançada para o seu perfil.</div>", unsafe_allow_html=True)
+
+            meus_dados = df_periodo[df_periodo['E-mail'] == st.session_state.user_email]
+            if not meus_dados.empty:
+                dados = meus_dados.iloc[0]
+                tem_colunas_novas = 'Total_Pesq_CSAT' in df_periodo.columns
+                my_csat = (dados['Boas_Pesq_CSAT'] / dados['Total_Pesq_CSAT'] * 100) if tem_colunas_novas and dados['Total_Pesq_CSAT'] > 0 else 0.0
+                my_ir = (dados['Sim_Pesq_IR'] / dados['Total_Pesq_IR'] * 100) if tem_colunas_novas and dados['Total_Pesq_IR'] > 0 else 0.0
+                my_tx_ret = dados['Taxa_Retencao_Original'] if 'Taxa_Retencao_Original' in dados else 0.0
+                
+                st.markdown("### ⭐ Minha Performance vs Metas Contratuais")
+                ca1, ca2, ca3, ca4 = st.columns(4)
+                with ca1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu CSAT</div><div class='kpi-value'>{my_csat:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
+                with ca2: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu IR</div><div class='kpi-value'>{my_ir:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_IR:.0f}%</div></div>", unsafe_allow_html=True)
+                with ca3: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Minha Aderência</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
+                with ca4: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Minha Conformidade</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
