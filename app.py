@@ -274,7 +274,6 @@ else:
             try:
                 df_users_atual = ler_csv_via_api_github("dados_usuarios.csv")
                 
-                # Limpeza e Padronização
                 if 'Nome' in df_users_atual.columns:
                     if 'COLABORADOR' not in df_users_atual.columns: df_users_atual.rename(columns={'Nome': 'COLABORADOR'}, inplace=True)
                     else: df_users_atual.drop(columns=['Nome'], inplace=True)
@@ -306,12 +305,10 @@ else:
         with aba_upload:
             st.header("⚙️ Central de Consolidação de Relatórios")
             
-            # --- RESTAURADO: SELEÇÃO DE MÊS E ANO PARA O UPLOAD ---
             col_m, col_a = st.columns(2)
             mes_up = col_m.selectbox("Mês de competência das planilhas:", MESES, index=4)
             ano_up = col_a.selectbox("Ano de competência das planilhas:", ANOS)
             st.markdown("---")
-            # ------------------------------------------------------
             
             arquivos_carregados = st.file_uploader("Arraste e solte os 5 arquivos CSV aqui de uma vez", type=["csv"], accept_multiple_files=True)
             relatorios_identificados = {"Aderência e Conformidade": None, "Pesquisa (CSAT/IR)": None, "Chat": None, "Voz": None, "Retenção": None}
@@ -357,6 +354,8 @@ else:
                         df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
                         df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
+                        
+                        # CORREÇÃO AQUI: Criando e puxando com o mesmo nome exato 'RT geral calculado'
                         df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
                         
                         df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
@@ -374,7 +373,8 @@ else:
                         df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(Total_Pesq_CSAT=('CSAT_Num', 'count'), Boas_Pesq_CSAT=('CSAT_Num', lambda x: (x >= 4).sum()), Total_Pesq_IR=('IR', 'count'), Sim_Pesq_IR=('IR', lambda x: (x.astype(str).str.strip().str.upper() == 'SIM').sum())).reset_index()
 
                         df_novo = pd.merge(df_users, df_perf, on='Chave_Nome', how='left')
-                        df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculated', 'Taxa_Retencao_Original']], on='Chave_Nome', how='left')
+                        # CORREÇÃO AQUI: Mesclando a coluna 'RT geral calculado'
+                        df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculado', 'Taxa_Retencao_Original']], on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_chat_agg, on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_voz_agg, on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_pesq_agg, on='Chave_Nome', how='left')
@@ -387,7 +387,7 @@ else:
                         st.success("Malha atualizada com sucesso!")
                         time.sleep(0.5)
                         st.rerun()
-                    except Exception as e: st.error(f"Erro: {e}")
+                    except Exception as e: st.error(f"Erro no processamento: {e}")
 
         # ABA DASHBOARD ANALÍTICO
         with aba_dashboard:
