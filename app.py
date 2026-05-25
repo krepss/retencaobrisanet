@@ -247,7 +247,7 @@ if not st.session_state.logged_in:
             with st.form("form_login"):
                 st.markdown("#### Entrar")
                 email_input = st.text_input("E-mail corporativo", placeholder="seu.nome@grupobrisanet.com.br")
-                senha_input = st.text_input("Palavra-passe", type="password", placeholder="••••••••")
+                senha_input = st.text_input("Senha", type="password", placeholder="••••••••")
                 submit_login = st.form_submit_button("Acessar Painel", use_container_width=True)
             
             if submit_login:
@@ -275,7 +275,7 @@ if not st.session_state.logged_in:
                             senha_correta = str(dados_usr.get('SENHA', '')).strip()
                             
                             if senha_correta == "" or senha_correta.lower() == "nan":
-                                st.warning("⚠️ **Atenção:** Você ainda não possui uma palavra-passe registada. Por favor, clique no separador **'Primeiro Acesso'** ao lado para criar a sua.")
+                                st.warning("⚠️ **Atenção:** Você ainda não possui uma senha cadastrada. Por favor, clique na aba **'Primeiro Acesso'** ao lado para criar a sua.")
                             elif senha_limpa == senha_correta:
                                 st.session_state.logged_in = True
                                 st.session_state.perfil = "Agente"
@@ -287,25 +287,25 @@ if not st.session_state.logged_in:
                                 time.sleep(0.5)
                                 st.rerun()
                             else:
-                                st.error("❌ E-mail ou palavra-passe incorreta.")
+                                st.error("❌ E-mail ou senha incorreta.")
                         else: st.error("❌ E-mail não encontrado na base de dados. Procure a gestão.")
-                    except Exception: st.error("❌ Banco de dados de utilizadores não localizado.")
+                    except Exception: st.error("❌ Banco de dados de usuários não localizado.")
         
         with aba_novo:
             with st.form("form_novo_acesso"):
-                st.markdown("#### Criar a minha palavra-passe")
-                st.info("Insira o seu e-mail corporativo e escolha uma palavra-passe forte para aceder ao sistema.")
-                email_novo = st.text_input("O seu E-mail corporativo")
-                senha_nova = st.text_input("Crie uma Palavra-passe", type="password")
-                senha_confirma = st.text_input("Confirme a Palavra-passe", type="password")
-                submit_novo = st.form_submit_button("Registar Palavra-passe", use_container_width=True)
+                st.markdown("#### Criar a minha senha")
+                st.info("Insira o seu e-mail corporativo e escolha uma senha forte para acessar o sistema.")
+                email_novo = st.text_input("Seu E-mail corporativo")
+                senha_nova = st.text_input("Crie uma Senha", type="password")
+                senha_confirma = st.text_input("Confirme a Senha", type="password")
+                submit_novo = st.form_submit_button("Cadastrar Senha", use_container_width=True)
 
             if submit_novo:
                 email_novo_limpo = email_novo.strip().lower()
                 if len(senha_nova) < 4:
-                    st.error("A palavra-passe deve ter pelo menos 4 caracteres.")
+                    st.error("A senha deve ter pelo menos 4 caracteres.")
                 elif senha_nova != senha_confirma:
-                    st.error("As palavras-passe não coincidem. Tente novamente.")
+                    st.error("As senhas não coincidem. Tente novamente.")
                 else:
                     try:
                         df_users_update = ler_csv_via_api_github("dados_usuarios.csv")
@@ -322,16 +322,16 @@ if not st.session_state.logged_in:
                             senha_atual = str(df_users_update.loc[mask, 'SENHA'].iloc[0]).strip()
                             
                             if senha_atual != "" and senha_atual.lower() != "nan":
-                                st.warning("⚠️ **Aviso:** Este e-mail já tem uma palavra-passe registada. Vá ao separador 'Acessar Sistema' e faça o login.")
+                                st.warning("⚠️ **Aviso:** Este e-mail já tem uma senha cadastrada. Vá para a aba 'Acessar Sistema' e faça o login.")
                             else:
                                 df_users_update.loc[mask, 'SENHA'] = senha_nova
                                 enviar_para_github("dados_usuarios.csv", df_users_update.to_csv(index=False))
                                 st.cache_data.clear()
-                                st.success("✅ **Palavra-passe registada com sucesso!** Vá ao separador 'Acessar Sistema' para iniciar sessão.")
+                                st.success("✅ **Senha cadastrada com sucesso!** Vá para a aba 'Acessar Sistema' para iniciar sessão.")
                         else:
                             st.error("❌ E-mail não localizado na base. Verifique se digitou corretamente.")
                     except Exception as e:
-                        st.error(f"Erro ao ligar à base de dados: {e}")
+                        st.error(f"Erro ao conectar à base de dados: {e}")
 
 # ==========================================
 # SISTEMA LOGADO
@@ -364,6 +364,7 @@ else:
     # VISÃO DO GESTOR
     # ==========================================
     if st.session_state.perfil == "Gestor":
+        
         df_periodo_mapeado = df_periodo.copy()
         if not df_periodo_mapeado.empty:
             def identificar_status_unificado(row):
@@ -447,9 +448,9 @@ else:
 
         with aba_ponto:
             st.header("⏰ Verificação de Banco de Horas")
-            st.markdown("Faça o upload do relatório de **Saldo de Horas** extraído do sistema para analisar os saldos da equipa.")
+            st.markdown("Faça o upload do arquivo de **Saldo de Horas** extraído do sistema para analisar os saldos da equipe.")
             
-            arquivo_ponto = st.file_uploader("Arraste e solte o ficheiro de Saldo de Horas aqui (CSV ou Excel)", type=["csv", "xlsx"])
+            arquivo_ponto = st.file_uploader("Arraste e solte o arquivo de Saldo de Horas aqui (CSV ou Excel)", type=["csv", "xlsx"])
             
             if arquivo_ponto:
                 try:
@@ -498,7 +499,7 @@ else:
                                 fig_neg.update_yaxes(autorange="reversed")
                                 st.plotly_chart(fig_neg, use_container_width=True)
                             else:
-                                st.success("Nenhum saldo negativo na equipa!")
+                                st.success("Nenhum saldo negativo na equipe!")
                                 
                         with c_graf2:
                             df_positivos = df_ponto[df_ponto['Minutos Saldo'] > 0].sort_values('Minutos Saldo', ascending=False).head(15)
@@ -507,7 +508,7 @@ else:
                                 fig_pos.update_yaxes(autorange="reversed")
                                 st.plotly_chart(fig_pos, use_container_width=True)
                             else:
-                                st.info("Nenhum saldo positivo na equipa.")
+                                st.info("Nenhum saldo positivo na equipe.")
                                 
                         st.subheader("📋 Detalhamento Completo de Banco de Horas")
                         
@@ -520,12 +521,12 @@ else:
                         st.dataframe(df_ponto[colunas_visiveis].style.apply(formatar_cores_ponto, axis=1), use_container_width=True)
                         
                     else:
-                        st.error("O ficheiro carregado não tem as colunas corretas ('Nome' e 'Total Banco'). Verifique se é a extração correta.")
+                        st.error("O arquivo carregado não tem as colunas corretas ('Nome' e 'Total Banco'). Verifique se é a extração correta.")
                 except Exception as e:
-                    st.error(f"Ocorreu um erro na leitura do ficheiro de ponto: {e}")
+                    st.error(f"Ocorreu um erro na leitura do arquivo de ponto: {e}")
 
         with aba_equipe:
-            st.header("👥 Cadastro Unificado de Equipa (Mestre)")
+            st.header("👥 Cadastro Unificado da Equipe (Mestre)")
             st.info("💡 **Dica:** Esta é a sua Fonte Única de Verdades. O status e o mês de férias inseridos aqui serão lidos automaticamente por todo o Dashboard.")
             try:
                 df_users_atual = ler_csv_via_api_github("dados_usuarios.csv")
@@ -544,15 +545,15 @@ else:
                 df_users_atual = df_users_atual[colunas_esperadas]
                 df_users_editado = st.data_editor(df_users_atual, num_rows="dynamic", use_container_width=True, key="ed_usr")
                 
-                if st.button("💾 Guardar Base Mestre de Utilizadores", type="primary"):
+                if st.button("💾 Salvar Base Mestre de Usuários", type="primary"):
                     enviar_para_github("dados_usuarios.csv", df_users_editado.to_csv(index=False))
                     st.cache_data.clear()
-                    st.success("Equipa guardada com sucesso!")
+                    st.success("Equipe salva com sucesso!")
                     time.sleep(0.5)
                     st.rerun()
             except Exception: 
-                st.warning("Faça o upload do seu CSV de utilizadores para começar.")
-                up_arq = st.file_uploader("Upload Ficheiro de Utilizadores", type=['csv'])
+                st.warning("Faça o upload do seu CSV de usuários para começar.")
+                up_arq = st.file_uploader("Upload Arquivo de Usuários", type=['csv'])
                 if up_arq and st.button("Criar"):
                     enviar_para_github("dados_usuarios.csv", up_arq)
                     st.rerun()
@@ -580,18 +581,18 @@ else:
                     fig_ferias.update_traces(textposition='auto', textfont_size=16, textfont_color="white")
                     st.plotly_chart(fig_ferias, use_container_width=True)
                 else:
-                    st.info("Nenhuma programação de férias lançada até ao momento.")
+                    st.info("Nenhuma programação de férias lançada até o momento.")
                 
                 st.markdown("---")
                 st.markdown("#### ✏️ Lançamento Rápido de Férias")
-                st.info("As alterações feitas nesta tabela atualizam automaticamente a base mestre (sem o risco de mexer nas palavras-passe).")
+                st.info("As alterações feitas nesta tabela atualizam automaticamente a base mestre (sem o risco de mexer nas senhas).")
                 
                 colunas_ferias = ['COLABORADOR', 'STATUS', 'FÉRIAS 2026']
                 df_edicao_ferias = df_ferias[colunas_ferias].copy()
                 
                 df_ferias_salvo = st.data_editor(df_edicao_ferias, num_rows="dynamic", use_container_width=True, key="ed_ferias_rapida")
                 
-                if st.button("💾 Guardar Calendário de Férias", type="primary"):
+                if st.button("💾 Salvar Calendário de Férias", type="primary"):
                     df_ferias['STATUS'] = df_ferias_salvo['STATUS']
                     df_ferias['FÉRIAS 2026'] = df_ferias_salvo['FÉRIAS 2026']
                     enviar_para_github("dados_usuarios.csv", df_ferias.to_csv(index=False))
@@ -600,17 +601,17 @@ else:
                     time.sleep(0.5)
                     st.rerun()
             except Exception:
-                st.warning("Base de utilizadores indisponível.")
+                st.warning("Base de usuários indisponível.")
 
         with aba_upload:
             st.header("⚙️ Central de Consolidação de Relatórios")
             
             col_m, col_a = st.columns(2)
-            mes_up = col_m.selectbox("Mês de competência das folhas:", MESES, index=4)
-            ano_up = col_a.selectbox("Ano de competência das folhas:", ANOS)
+            mes_up = col_m.selectbox("Mês de competência das planilhas:", MESES, index=4)
+            ano_up = col_a.selectbox("Ano de competência das planilhas:", ANOS)
             st.markdown("---")
             
-            arquivos_carregados = st.file_uploader("Arraste e solte os 5 ficheiros CSV aqui de uma só vez", type=["csv"], accept_multiple_files=True)
+            arquivos_carregados = st.file_uploader("Arraste e solte os 5 arquivos CSV aqui de uma vez", type=["csv"], accept_multiple_files=True)
             relatorios_identificados = {"Aderência e Conformidade": None, "Pesquisa (CSAT/IR)": None, "Chat": None, "Voz": None, "Retenção": None}
             if arquivos_carregados:
                 for arquivo in arquivos_carregados:
@@ -635,7 +636,7 @@ else:
             with c_chk5: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Retenção'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>5. Retenção</b></div>", unsafe_allow_html=True)
 
             if all(relatorios_identificados.values()) and st.button("🚀 Processar e Atualizar Base Mestre AGORA", type="primary", use_container_width=True):
-                with st.spinner("A Consolidar..."):
+                with st.spinner("Consolidando..."):
                     try:
                         df_perf = pd.read_csv(relatorios_identificados["Aderência e Conformidade"], sep=None, engine='python')
                         df_ret = pd.read_csv(relatorios_identificados["Retenção"], sep=None, engine='python')
@@ -868,10 +869,10 @@ else:
                 }), use_container_width=True)
 
     # ==========================================
-    # VISÃO DO AGENTE NOMINAL LOGADO
+    # VISÃO DO AGENTE NOMINAL LOGADO (GAMIFICADO)
     # ==========================================
     elif st.session_state.perfil == "Agente":
-        if not base_mestre_existe: st.error("⚠️ A configurar o sistema. Tente novamente mais tarde.")
+        if not base_mestre_existe: st.error("⚠️ Configurando o sistema. Tente novamente mais tarde.")
         elif not dados_carregados: st.warning(f"⚠️ {erro_dados}")
         else:
             df_users_login = ler_csv_via_api_github("dados_usuarios.csv")
@@ -893,7 +894,6 @@ else:
             st.markdown(f"<h2>👋 Olá, {primeiro_nome}!</h2>", unsafe_allow_html=True)
             st.markdown("---")
 
-            # --- ABAS DO AGENTE (COM A WIKI ADICIONADA) ---
             aba_desempenho, aba_ferias, aba_wiki, aba_conta = st.tabs([
                 "📊 O Meu Desempenho", 
                 "🌴 As Minhas Férias", 
@@ -961,7 +961,7 @@ else:
                             
                     st.markdown(f"""
                         <div style='background-color: #ffffff; border: 1px solid #e9ecef; border-left: 5px solid {cor_rank}; padding: 15px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0px 2px 5px rgba(0,0,0,0.02);'>
-                            <h4 style='margin: 0; color: #6c757d; font-size: 13px; text-transform: uppercase;'>O Seu Ranking na Equipa (Retenção)</h4>
+                            <h4 style='margin: 0; color: #6c757d; font-size: 13px; text-transform: uppercase;'>O Seu Ranking na Equipe (Retenção)</h4>
                             <p style='margin: 5px 0 0 0; color: #343a40; font-size: 18px;'>{rank_display}</p>
                         </div>
                     """, unsafe_allow_html=True)
@@ -980,14 +980,14 @@ else:
                     with co3: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
                     with co4: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
                 else:
-                    st.info(f"Ainda não existem dados operacionais associados ao seu perfil para as folhas de {mes_view}.")
+                    st.info(f"Ainda não existem dados operacionais associados ao seu perfil para as planilhas de {mes_view}.")
 
             with aba_ferias:
-                st.markdown("### 🌴 Planeamento Anual de Férias")
+                st.markdown("### 🌴 Planejamento Anual de Férias")
                 if mes_ferias_cadastrado == "Não programadas":
-                    st.info("Ainda não tem um mês de férias programado no sistema para este ano. Entre em contacto com a gestão para realizar o planeamento.")
+                    st.info("Ainda não tem um mês de férias programado no sistema para este ano. Entre em contato com a gestão para realizar o planejamento.")
                 else:
-                    st.success(f"🎉 O seu descanso está garantido! As suas férias estão planeadas para o mês de **{mes_ferias_cadastrado}**.")
+                    st.success(f"🎉 O seu descanso está garantido! As suas férias estão planejadas para o mês de **{mes_ferias_cadastrado}**.")
                     st.markdown(f"""
                         <div class='banner-ferias'>
                             <p style='font-size: 18px; margin-bottom: 0px;'>O seu mês de descanso será em:</p>
@@ -995,26 +995,25 @@ else:
                         </div>
                     """, unsafe_allow_html=True)
 
-            # --- NOVA ABA: WIKI E BASE DE CONHECIMENTO ---
             with aba_wiki:
                 st.markdown("### 📚 Base de Conhecimento (Wiki)")
-                st.markdown("Bem-vindo à Wiki da Operação! Aqui encontra todos os materiais, roteiros, manuais e dicas essenciais para o seu dia a dia.")
+                st.markdown("Bem-vindo à Wiki da Operação! Aqui você encontra todos os materiais, roteiros, manuais e dicas essenciais para o seu dia a dia.")
                 
-                st.info("💡 **Dica:** Guarde o link do Drive nos seus favoritos para acesso rápido durante os atendimentos.")
+                st.info("💡 **Dica:** Salve o link do Drive nos seus favoritos para acesso rápido durante os atendimentos.")
                 
                 st.markdown("""
                     <div style='background-color: #f8f9fa; border: 1px solid #e9ecef; border-left: 5px solid #ffc107; padding: 25px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0px 2px 5px rgba(0,0,0,0.02);'>
                         <h3 style='margin: 0; color: #343a40;'>📁 Repositório Oficial de Materiais</h3>
                         <p style='color: #6c757d; font-size: 16px; margin-top: 10px; margin-bottom: 20px;'>
-                            Aceda à nossa pasta oficial no Google Drive. Lá encontrará atualizações de ofertas, comunicados, regras de negócio e guiões de retenção.
+                            Acesse a nossa pasta oficial no Google Drive. Lá você encontrará atualizações de ofertas, comunicados, regras de negócio e roteiros de retenção.
                         </p>
-                        <a href='https://drive.google.com/drive/folders/1qvSLoEiVKpGRO0KB4Ljh1fXNUOk28Itp' target='_blank' class='btn-wiki'>
-                            🔗 Aceder à Pasta no Google Drive
+                        <a href='COLE_AQUI_SEU_LINK_DO_DRIVE' target='_blank' class='btn-wiki'>
+                            🔗 Acessar Pasta no Google Drive
                         </a>
                     </div>
                 """, unsafe_allow_html=True)
                 
-                st.markdown("#### 📌 O que vai encontrar no nosso repositório?")
+                st.markdown("#### 📌 O que você vai encontrar no nosso repositório?")
                 c_w1, c_w2 = st.columns(2)
                 with c_w1:
                     st.markdown("✔️ Manuais de Sistemas e Plataformas\n✔️ Scripts de Retenção e Argumentação\n✔️ Dicas de Qualidade e CSAT")
@@ -1023,16 +1022,16 @@ else:
 
             with aba_conta:
                 st.markdown("### ⚙️ Configurações de Segurança")
-                st.markdown("Para sua segurança, escolha uma palavra-passe forte, com letras e números, e não a partilhe com terceiros.")
+                st.markdown("Para sua segurança, escolha uma senha forte, com letras e números, e não a compartilhe com terceiros.")
                 
                 with st.form("form_senha_interna"):
-                    nova_senha = st.text_input("Digite a sua nova palavra-passe", type="password")
-                    confirmar_senha = st.text_input("Confirme a nova palavra-passe", type="password")
-                    if st.form_submit_button("Guardar Palavra-passe"):
+                    nova_senha = st.text_input("Digite a sua nova senha", type="password")
+                    confirmar_senha = st.text_input("Confirme a nova senha", type="password")
+                    if st.form_submit_button("Salvar Senha"):
                         if nova_senha != confirmar_senha:
-                            st.error("As palavras-passe não coincidem. Tente novamente.")
+                            st.error("As senhas não coincidem. Tente novamente.")
                         elif len(nova_senha) < 4:
-                            st.error("A palavra-passe deve ter pelo menos 4 caracteres.")
+                            st.error("A senha deve ter pelo menos 4 caracteres.")
                         else:
                             df_users_update = ler_csv_via_api_github("dados_usuarios.csv")
                             col_email_up = 'E-MAIL' if 'E-MAIL' in df_users_update.columns else 'E-mail'
@@ -1048,6 +1047,6 @@ else:
                                 df_users_update.loc[mask, 'SENHA'] = nova_senha
                                 enviar_para_github("dados_usuarios.csv", df_users_update.to_csv(index=False))
                                 st.cache_data.clear()
-                                st.success("✅ A sua palavra-passe foi alterada com sucesso!")
+                                st.success("✅ A sua senha foi alterada com sucesso!")
                             else:
-                                st.error("Erro interno: Utilizador não encontrado.")
+                                st.error("Erro interno: Usuário não encontrado.")
