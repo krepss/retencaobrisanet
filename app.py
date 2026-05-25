@@ -210,12 +210,11 @@ if not st.session_state.logged_in:
             else:
                 try:
                     df_users_login = ler_csv_via_api_github("dados_usuarios.csv")
-                    if 'E-MAIL' in df_users_login.columns:
-                        df_users_login.rename(columns={'E-MAIL': 'E-mail'}, inplace=True)
+                    col_email = 'E-MAIL' if 'E-MAIL' in df_users_login.columns else 'E-mail'
                     
-                    lista_emails = df_users_login['E-mail'].dropna().str.strip().str.lower().tolist()
+                    lista_emails = df_users_login[col_email].dropna().str.strip().str.lower().tolist()
                     if email_limpo in lista_emails:
-                        dados_usr = df_users_login[df_users_login['E-mail'].str.strip().str.lower() == email_limpo].iloc[0]
+                        dados_usr = df_users_login[df_users_login[col_email].str.strip().str.lower() == email_limpo].iloc[0]
                         senha_correta = str(dados_usr.get('SENHA', '')).strip()
                         if senha_correta == "" or senha_correta.lower() == "nan": senha_correta = SENHA_PADRAO_AGENTE
                         
@@ -223,8 +222,8 @@ if not st.session_state.logged_in:
                             st.session_state.logged_in = True
                             st.session_state.perfil = "Agente"
                             st.session_state.user_email = email_limpo
-                            # Modificado de Nome para COLABORADOR
-                            st.session_state.user_nome = str(dados_usr['COLABORADOR']).title()
+                            col_nome = 'COLABORADOR' if 'COLABORADOR' in dados_usr else 'Nome'
+                            st.session_state.user_nome = str(dados_usr[col_nome]).title()
                             salvar_sessao(email_limpo, "Agente", st.session_state.user_nome)
                             st.success("Login efetuado!")
                             time.sleep(0.5)
@@ -275,17 +274,34 @@ else:
             try:
                 df_users_atual = ler_csv_via_api_github("dados_usuarios.csv")
                 
+                # --- LIMPEZA DE COLUNAS VELHAS (MIGRAÇÃO) ---
+                if 'Nome' in df_users_atual.columns:
+                    if 'COLABORADOR' not in df_users_atual.columns:
+                        df_users_atual.rename(columns={'Nome': 'COLABORADOR'}, inplace=True)
+                    else:
+                        df_users_atual.drop(columns=['Nome'], inplace=True)
+                        
+                if 'E-mail' in df_users_atual.columns:
+                    if 'E-MAIL' not in df_users_atual.columns:
+                        df_users_atual.rename(columns={'E-mail': 'E-MAIL'}, inplace=True)
+                    else:
+                        df_users_atual.drop(columns=['E-mail'], inplace=True)
+
+                # Garante as colunas novas
                 colunas_esperadas = ['COLABORADOR', 'E-MAIL', 'FÉRIAS 2026', 'STATUS', 'SENHA', 'ADMISSÃO']
                 for col in colunas_esperadas:
                     if col not in df_users_atual.columns:
-                        if col == 'E-MAIL' and 'E-mail' in df_users_atual.columns: df_users_atual.rename(columns={'E-mail': 'E-MAIL'}, inplace=True)
-                        else: df_users_atual[col] = ""
+                        df_users_atual[col] = ""
+
+                # Força a tabela a mostrar ESTRITAMENTE as colunas padronizadas, ignorando o lixo anterior
+                df_users_atual = df_users_atual[colunas_esperadas]
 
                 df_users_editado = st.data_editor(df_users_atual, num_rows="dynamic", use_container_width=True, key="ed_usr")
+                
                 if st.button("💾 Salvar Base Mestre de Usuários", type="primary"):
                     enviar_para_github("dados_usuarios.csv", df_users_editado.to_csv(index=False))
                     st.cache_data.clear()
-                    st.success("Equipe salva com sucesso!")
+                    st.success("Equipe salva com sucesso! (Tabela velha apagada da nuvem)")
                     time.sleep(0.5)
                     st.rerun()
             except Exception: 
@@ -336,8 +352,8 @@ else:
                         df_perf['Conformidade (%)'] = df_perf['Conformidade (%)'].apply(limpar_porcentagem)
                         df_perf['Chave_Nome'] = df_perf['Agente'].astype(str).str.strip().str.upper()
                         
-                        # Modificado de Nome para COLABORADOR
-                        df_users['Chave_Nome'] = df_users['COLABORADOR'].astype(str).str.strip().str.upper()
+                        col_nome = 'COLABORADOR' if 'COLABORADOR' in df_users.columns else 'Nome'
+                        df_users['Chave_Nome'] = df_users[col_nome].astype(str).str.strip().str.upper()
                         
                         df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
                         df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
@@ -552,7 +568,6 @@ else:
                             st.plotly_chart(fig_volvz, use_container_width=True)
                     st.markdown("---")
 
-                # TABELA NOMINAL FILTRADA
                 st.subheader("👥 Detalhamento Operacional por Colaborador")
                 colunas_tabela = ['Nome Exibição', 'Status_Dinamico', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Conformidade (%)', 'Aderência (%)', 'Vol. Chat', 'TMA Chat (Min)', 'Vol. Voz', 'TMA Voz (Min)', 'RT geral valido', '% Retenção', '% Cancelamento']
                 colunas_tabela = list(dict.fromkeys(colunas_tabela))
@@ -637,9 +652,9 @@ else:
                             st.error("A senha deve ter pelo menos 4 caracteres.")
                         else:
                             df_users_update = ler_csv_via_api_github("dados_usuarios.csv")
-                            if 'E-MAIL' in df_users_update.columns: df_users_update.rename(columns={'E-MAIL': 'E-mail'}, inplace=True)
+                            col_email_up = 'E-MAIL' if 'E-MAIL' in df_users_update.columns else 'E-mail'
                             
-                            mask = df_users_update['E-mail'].str.strip().str.lower() == st.session_state.user_email.strip().lower()
+                            mask = df_users_update[col_email_up].str.strip().str.lower() == st.session_state.user_email.strip().lower()
                             df_users_update.loc[mask, 'SENHA'] = nova_senha
                             
                             enviar_para_github("dados_usuarios.csv", df_users_update.to_csv(index=False))
