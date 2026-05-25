@@ -127,7 +127,8 @@ def ler_csv_via_api_github(nome_arquivo):
     repo = g.get_repo(st.secrets["GITHUB_REPO"])
     arquivo_git = repo.get_contents(nome_arquivo)
     conteudo_texto = arquivo_git.decoded_content.decode('utf-8')
-    return pd.read_csv(io.StringIO(conteudo_texto))
+    # Usando sep=None para auto-detectar vírgula ou ponto-e-vírgula em arquivos Brasileiros
+    return pd.read_csv(io.StringIO(conteudo_texto), sep=None, engine='python')
 
 def enviar_para_github(nome_arquivo_git, conteudo):
     try:
@@ -147,13 +148,21 @@ def enviar_para_github(nome_arquivo_git, conteudo):
 def limpar_porcentagem(valor):
     if pd.isna(valor): return 0.0
     try:
+        # Se vier como número direto (ex: 66.32 ou 0.6632)
         val = float(valor)
         if val <= 1.0 and val > 0: return val * 100
         return val
     except ValueError:
-        valor_str = str(valor).replace('%', '').replace(',', '.')
-        if valor_str.lower() == 'nan': return 0.0
-        return float(valor_str)
+        # Se vier formatado como texto (ex: "66,32%" ou "0,6632")
+        valor_str = str(valor).replace('%', '').strip()
+        valor_str = valor_str.replace(',', '.')
+        if valor_str.lower() == 'nan' or valor_str == '': return 0.0
+        try:
+            val = float(valor_str)
+            if val <= 1.0 and val > 0: return val * 100
+            return val
+        except Exception:
+            return 0.0
 
 def ms_para_minutos(ms):
     if pd.isna(ms): return 0.0
@@ -168,7 +177,6 @@ def calcular_tempo_empresa(data_str):
         if dias < 0: return "Inicia no futuro"
         anos = dias // 365
         meses = (dias % 365) // 30
-        
         if anos > 0 and meses > 0: return f"{anos} ano(s) e {meses} mês(es)"
         elif anos > 0: return f"{anos} ano(s)"
         elif meses > 0: return f"{meses} mês(es)"
@@ -267,7 +275,6 @@ else:
     if st.session_state.perfil == "Gestor":
         aba_dashboard, aba_upload, aba_equipe = st.tabs(["📊 Dashboard de Indicadores", "⚙️ Consolidação (Mensal)", "👥 Gestão da Equipe"])
         
-        # ABA GESTÃO DA EQUIPE
         with aba_equipe:
             st.header("👥 Cadastro Unificado de Equipe (Mestre)")
             st.info("💡 **Dica:** Esta é a sua Fonte Única de Verdades. O status e o mês de férias inseridos aqui serão lidos automaticamente por todo o Dashboard.")
@@ -301,7 +308,6 @@ else:
                     enviar_para_github("dados_usuarios.csv", up_arq)
                     st.rerun()
 
-        # ABA UPLOAD
         with aba_upload:
             st.header("⚙️ Central de Consolidação de Relatórios")
             
@@ -315,7 +321,7 @@ else:
             if arquivos_carregados:
                 for arquivo in arquivos_carregados:
                     try:
-                        df_header = pd.read_csv(arquivo, nrows=0)
+                        df_header = pd.read_csv(arquivo, nrows=0, sep=None, engine='python')
                         cols = [c.strip() for c in df_header.columns]
                         arquivo.seek(0)
                         if 'Aderência (%)' in cols and 'Conformidade (%)' in cols and 'Agente' in cols: relatorios_identificados["Aderência e Conformidade"] = arquivo
@@ -337,11 +343,12 @@ else:
             if all(relatorios_identificados.values()) and st.button("🚀 Processar e Atualizar Base Mestre AGORA", type="primary", use_container_width=True):
                 with st.spinner("Consolidando..."):
                     try:
-                        df_perf = pd.read_csv(relatorios_identificados["Aderência e Conformidade"])
-                        df_ret = pd.read_csv(relatorios_identificados["Retenção"])
-                        df_chat = pd.read_csv(relatorios_identificados["Chat"])
-                        df_voz = pd.read_csv(relatorios_identificados["Voz"])
-                        df_pesq = pd.read_csv(relatorios_identificados["Pesquisa (CSAT/IR)"])
+                        # Motor atualizado para ler arquivos brasileiros (; e ,) perfeitamente
+                        df_perf = pd.read_csv(relatorios_identificados["Aderência e Conformidade"], sep=None, engine='python')
+                        df_ret = pd.read_csv(relatorios_identificados["Retenção"], sep=None, engine='python')
+                        df_chat = pd.read_csv(relatorios_identificados["Chat"], sep=None, engine='python')
+                        df_voz = pd.read_csv(relatorios_identificados["Voz"], sep=None, engine='python')
+                        df_pesq = pd.read_csv(relatorios_identificados["Pesquisa (CSAT/IR)"], sep=None, engine='python')
                         df_users = ler_csv_via_api_github("dados_usuarios.csv")
                         
                         df_perf['Aderência (%)'] = df_perf['Aderência (%)'].apply(limpar_porcentagem)
@@ -354,8 +361,6 @@ else:
                         df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
                         df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
-                        
-                        # CORREÇÃO AQUI: Criando e puxando com o mesmo nome exato 'RT geral calculado'
                         df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
                         
                         df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
@@ -373,7 +378,6 @@ else:
                         df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(Total_Pesq_CSAT=('CSAT_Num', 'count'), Boas_Pesq_CSAT=('CSAT_Num', lambda x: (x >= 4).sum()), Total_Pesq_IR=('IR', 'count'), Sim_Pesq_IR=('IR', lambda x: (x.astype(str).str.strip().str.upper() == 'SIM').sum())).reset_index()
 
                         df_novo = pd.merge(df_users, df_perf, on='Chave_Nome', how='left')
-                        # CORREÇÃO AQUI: Mesclando a coluna 'RT geral calculado'
                         df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculado', 'Taxa_Retencao_Original']], on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_chat_agg, on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_voz_agg, on='Chave_Nome', how='left')
