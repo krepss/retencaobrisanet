@@ -232,7 +232,7 @@ if not st.session_state.logged_in:
             with st.form("form_login"):
                 st.markdown("#### Entrar")
                 email_input = st.text_input("E-mail corporativo", placeholder="seu.nome@grupobrisanet.com.br")
-                senha_input = st.text_input("Senha", type="password", placeholder="••••••••")
+                senha_input = st.text_input("Palavra-passe", type="password", placeholder="••••••••")
                 submit_login = st.form_submit_button("Acessar Painel", use_container_width=True)
             
             if submit_login:
@@ -252,13 +252,16 @@ if not st.session_state.logged_in:
                         df_users_login = ler_csv_via_api_github("dados_usuarios.csv")
                         col_email = 'E-MAIL' if 'E-MAIL' in df_users_login.columns else 'E-mail'
                         
-                        lista_emails = df_users_login[col_email].dropna().str.strip().str.lower().tolist()
-                        if email_limpo in lista_emails:
-                            dados_usr = df_users_login[df_users_login[col_email].str.strip().str.lower() == email_limpo].iloc[0]
+                        # Força o tipo string para não dar erro com NaN
+                        df_users_login[col_email] = df_users_login[col_email].astype(str)
+                        
+                        mask_login = df_users_login[col_email].str.strip().str.lower() == email_limpo
+                        if mask_login.any():
+                            dados_usr = df_users_login[mask_login].iloc[0]
                             senha_correta = str(dados_usr.get('SENHA', '')).strip()
                             
                             if senha_correta == "" or senha_correta.lower() == "nan":
-                                st.warning("⚠️ **Atenção:** Você ainda não possui uma senha registada. Por favor, clique no separador **'Primeiro Acesso'** ao lado para criar a sua senha inicial.")
+                                st.warning("⚠️ **Atenção:** Você ainda não possui uma palavra-passe registada. Por favor, clique no separador **'Primeiro Acesso'** ao lado para criar a sua.")
                             elif senha_limpa == senha_correta:
                                 st.session_state.logged_in = True
                                 st.session_state.perfil = "Agente"
@@ -293,11 +296,13 @@ if not st.session_state.logged_in:
                     try:
                         df_users_update = ler_csv_via_api_github("dados_usuarios.csv")
                         col_email_up = 'E-MAIL' if 'E-MAIL' in df_users_update.columns else 'E-mail'
-                        lista_emails_up = df_users_update[col_email_up].dropna().str.strip().str.lower().tolist()
                         
-                        if email_novo_limpo in lista_emails_up:
-                            mask = df_users_update[col_email_up].str.strip().str.lower() == email_novo_limpo
-                            senha_atual = str(df_users_update.loc[mask, 'SENHA'].values[0]).strip()
+                        # Força o formato de string para evitar o erro de IndexError (Tamanho 0)
+                        df_users_update[col_email_up] = df_users_update[col_email_up].astype(str)
+                        mask = df_users_update[col_email_up].str.strip().str.lower() == email_novo_limpo
+                        
+                        if mask.any():
+                            senha_atual = str(df_users_update.loc[mask, 'SENHA'].iloc[0]).strip()
                             
                             if senha_atual != "" and senha_atual.lower() != "nan":
                                 st.warning("⚠️ **Aviso:** Este e-mail já tem uma palavra-passe registada. Vá ao separador 'Acessar Sistema' e faça o login.")
@@ -308,8 +313,8 @@ if not st.session_state.logged_in:
                                 st.success("✅ **Palavra-passe registada com sucesso!** Vá ao separador 'Acessar Sistema' para iniciar sessão.")
                         else:
                             st.error("❌ E-mail não localizado na base. Verifique se digitou corretamente.")
-                    except Exception:
-                        st.error("Erro ao ligar à base de dados.")
+                    except Exception as e:
+                        st.error(f"Erro ao ligar à base de dados: {e}")
 
 # ==========================================
 # SISTEMA LOGADO
@@ -345,7 +350,7 @@ else:
         aba_dashboard, aba_upload, aba_equipe, aba_ferias = st.tabs([
             "📊 Dashboard de Indicadores", 
             "⚙️ Consolidação (Mensal)", 
-            "👥 Gestão da Equipa",
+            "👥 Gestão da Equipe",
             "🌴 Calendário de Férias"
         ])
         
@@ -372,7 +377,7 @@ else:
                 if st.button("💾 Guardar Base Mestre de Utilizadores", type="primary"):
                     enviar_para_github("dados_usuarios.csv", df_users_editado.to_csv(index=False))
                     st.cache_data.clear()
-                    st.success("Equipa guardada com sucesso!")
+                    st.success("Equipe guardada com sucesso!")
                     time.sleep(0.5)
                     st.rerun()
             except Exception: 
@@ -712,7 +717,11 @@ else:
             df_users_login = ler_csv_via_api_github("dados_usuarios.csv")
             if 'E-MAIL' in df_users_login.columns: df_users_login.rename(columns={'E-MAIL': 'E-mail'}, inplace=True)
             
-            meus_dados_cadastrais = df_users_login[df_users_login['E-mail'].str.strip().str.lower() == st.session_state.user_email.strip().lower()].iloc[0]
+            # Força o tipo para String para evitar bug do NaN
+            df_users_login['E-mail'] = df_users_login['E-mail'].astype(str)
+            
+            mask_user = df_users_login['E-mail'].str.strip().str.lower() == st.session_state.user_email.strip().lower()
+            meus_dados_cadastrais = df_users_login[mask_user].iloc[0]
             
             mes_ferias_cadastrado = str(meus_dados_cadastrais.get('FÉRIAS 2026', '')).strip().title()
             if mes_ferias_cadastrado.lower() == 'nan' or mes_ferias_cadastrado == '':
@@ -789,7 +798,7 @@ else:
                             
                     st.markdown(f"""
                         <div style='background-color: #ffffff; border: 1px solid #e9ecef; border-left: 5px solid {cor_rank}; padding: 15px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0px 2px 5px rgba(0,0,0,0.02);'>
-                            <h4 style='margin: 0; color: #6c757d; font-size: 13px; text-transform: uppercase;'>O Seu Ranking na Equipa (Retenção)</h4>
+                            <h4 style='margin: 0; color: #6c757d; font-size: 13px; text-transform: uppercase;'>O Seu Ranking na Equipe (Retenção)</h4>
                             <p style='margin: 5px 0 0 0; color: #343a40; font-size: 18px;'>{rank_display}</p>
                         </div>
                     """, unsafe_allow_html=True)
@@ -843,9 +852,13 @@ else:
                             df_users_update = ler_csv_via_api_github("dados_usuarios.csv")
                             col_email_up = 'E-MAIL' if 'E-MAIL' in df_users_update.columns else 'E-mail'
                             
+                            df_users_update[col_email_up] = df_users_update[col_email_up].astype(str)
                             mask = df_users_update[col_email_up].str.strip().str.lower() == st.session_state.user_email.strip().lower()
-                            df_users_update.loc[mask, 'SENHA'] = nova_senha
                             
-                            enviar_para_github("dados_usuarios.csv", df_users_update.to_csv(index=False))
-                            st.cache_data.clear()
-                            st.success("✅ A sua palavra-passe foi alterada com sucesso!")
+                            if mask.any():
+                                df_users_update.loc[mask, 'SENHA'] = nova_senha
+                                enviar_para_github("dados_usuarios.csv", df_users_update.to_csv(index=False))
+                                st.cache_data.clear()
+                                st.success("✅ A sua palavra-passe foi alterada com sucesso!")
+                            else:
+                                st.error("Erro interno: Utilizador não encontrado.")
