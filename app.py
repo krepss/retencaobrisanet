@@ -111,6 +111,21 @@ st.markdown("""
             margin-top: 10px;
             font-size: 36px;
         }
+        .btn-wiki {
+            display: inline-block;
+            background-color: #007bff;
+            color: white !important;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 16px;
+            margin-top: 10px;
+            transition: background-color 0.3s;
+        }
+        .btn-wiki:hover {
+            background-color: #0056b3;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -153,7 +168,7 @@ if not st.session_state.logged_in:
     restaurar_sessao()
 
 # ==========================================
-# FUNÇÕES DE LEITURA E GRAVAÇÃO VIA API GITHUB
+# FUNÇÕES DE LEITURA E GRAVAÇÃO VIA API GITHUB E UTILITÁRIAS
 # ==========================================
 def ler_csv_via_api_github(nome_arquivo):
     g = Github(st.secrets["GITHUB_TOKEN"])
@@ -349,8 +364,6 @@ else:
     # VISÃO DO GESTOR
     # ==========================================
     if st.session_state.perfil == "Gestor":
-        
-        # ESTRUTURA GERAL DOS DADOS DE STATUS (Reutilizada em todas as abas)
         df_periodo_mapeado = df_periodo.copy()
         if not df_periodo_mapeado.empty:
             def identificar_status_unificado(row):
@@ -360,7 +373,6 @@ else:
                 return 'Ativo'
             df_periodo_mapeado['Status_Dinamico'] = df_periodo_mapeado.apply(identificar_status_unificado, axis=1)
 
-        # ABAS DO GESTOR (INCLUINDO INTELIGÊNCIA DE RETENÇÃO)
         aba_dashboard, aba_retencao, aba_ponto, aba_equipe, aba_ferias, aba_upload = st.tabs([
             "📊 Dashboard Geral", 
             "🎯 Inteligência de Retenção",
@@ -370,7 +382,6 @@ else:
             "⚙️ Consolidação (Upload)"
         ])
         
-        # --- NOVA ABA: INTELIGÊNCIA DE RETENÇÃO ---
         with aba_retencao:
             st.header("🎯 Inteligência e Qualidade de Retenção")
             
@@ -380,13 +391,11 @@ else:
                 df_ret_ativos = df_periodo_mapeado[df_periodo_mapeado['Status_Dinamico'] == 'Ativo'].copy()
                 
                 if 'Taxa_Retencao_Original' in df_ret_ativos.columns and 'RT geral calculado' in df_ret_ativos.columns:
-                    # Isola apenas quem teve tentativas de cancelamento
                     df_ret_ativos = df_ret_ativos[df_ret_ativos['RT geral calculado'] > 0]
                     
                     if df_ret_ativos.empty:
                         st.info("Nenhuma oportunidade de retenção registrada para os operadores ativos neste mês.")
                     else:
-                        # 1. Panorama Global
                         tot_oportunidades = df_ret_ativos['RT geral calculado'].sum()
                         tot_retidos = df_ret_ativos['RT geral valido'].sum()
                         tot_perdidos = tot_oportunidades - tot_retidos
@@ -400,7 +409,6 @@ else:
                         
                         st.markdown("---")
                         
-                        # 2. Matriz de Risco (Volume vs Taxa)
                         st.subheader("⚠️ Matriz de Risco Operacional")
                         st.markdown("Identifique quem recebe muitas chamadas de cancelamento e salva poucos clientes (Quadrante Inferior Direito = **Risco Alto**).")
                         
@@ -414,13 +422,11 @@ else:
                                                  labels={'RT geral calculado': 'Total de Oportunidades (Volume)', 'Taxa_Retencao_Original': 'Taxa de Retenção (%)'},
                                                  title="Impacto de Volume x Eficiência de Retenção")
                         
-                        # Adiciona a linha da Meta para separar os bons dos ruins
                         fig_scatter.add_hline(y=META_RETENCAO, line_dash="dash", line_color="green", annotation_text=f"Meta ({META_RETENCAO}%)")
                         st.plotly_chart(fig_scatter, use_container_width=True)
 
                         st.markdown("---")
                         
-                        # 3. Pódio e Foco Crítico
                         c_rank1, c_rank2 = st.columns(2)
                         df_ordenado = df_ret_ativos.sort_values(by='Taxa_Retencao_Original', ascending=False)
                         
@@ -439,7 +445,6 @@ else:
                 else:
                     st.info("A base de dados atual não possui as colunas de retenção estruturadas corretamente.")
 
-        # --- ABA BANCO DE HORAS ---
         with aba_ponto:
             st.header("⏰ Verificação de Banco de Horas")
             st.markdown("Faça o upload do relatório de **Saldo de Horas** extraído do sistema para analisar os saldos da equipa.")
@@ -519,7 +524,6 @@ else:
                 except Exception as e:
                     st.error(f"Ocorreu um erro na leitura do ficheiro de ponto: {e}")
 
-        # ABA GESTÃO DA EQUIPE
         with aba_equipe:
             st.header("👥 Cadastro Unificado de Equipa (Mestre)")
             st.info("💡 **Dica:** Esta é a sua Fonte Única de Verdades. O status e o mês de férias inseridos aqui serão lidos automaticamente por todo o Dashboard.")
@@ -553,7 +557,6 @@ else:
                     enviar_para_github("dados_usuarios.csv", up_arq)
                     st.rerun()
 
-        # ABA FÉRIAS
         with aba_ferias:
             st.header("🌴 Gestão e Calendário de Férias")
             st.markdown("Tenha uma visão rápida de quem sai de folga em cada mês para não sobrecarregar a escala de atendimento.")
@@ -599,7 +602,6 @@ else:
             except Exception:
                 st.warning("Base de utilizadores indisponível.")
 
-        # ABA UPLOAD
         with aba_upload:
             st.header("⚙️ Central de Consolidação de Relatórios")
             
@@ -684,7 +686,6 @@ else:
                         st.rerun()
                     except Exception as e: st.error(f"Erro no processamento: {e}")
 
-        # ABA DASHBOARD GERAL
         with aba_dashboard:
             if not base_mestre_existe: st.warning("📢 Base mestre indisponível.")
             elif not dados_carregados: st.warning(f"⚠️ {erro_dados}")
@@ -867,7 +868,7 @@ else:
                 }), use_container_width=True)
 
     # ==========================================
-    # VISÃO DO AGENTE NOMINAL LOGADO (GAMIFICADO)
+    # VISÃO DO AGENTE NOMINAL LOGADO
     # ==========================================
     elif st.session_state.perfil == "Agente":
         if not base_mestre_existe: st.error("⚠️ A configurar o sistema. Tente novamente mais tarde.")
@@ -892,12 +893,17 @@ else:
             st.markdown(f"<h2>👋 Olá, {primeiro_nome}!</h2>", unsafe_allow_html=True)
             st.markdown("---")
 
-            aba_desempenho, aba_ferias, aba_conta = st.tabs(["📊 O Meu Desempenho", "🌴 As Minhas Férias", "⚙️ A Minha Conta"])
+            # --- ABAS DO AGENTE (COM A WIKI ADICIONADA) ---
+            aba_desempenho, aba_ferias, aba_wiki, aba_conta = st.tabs([
+                "📊 O Meu Desempenho", 
+                "🌴 As Minhas Férias", 
+                "📚 Base de Conhecimento", 
+                "⚙️ A Minha Conta"
+            ])
 
             with aba_desempenho:
                 st.markdown(f"<p style='color: #6c757d; font-size: 16px;'>Acompanhe o seu desempenho e metas referentes a <b>{mes_view} de {ano_view}</b>.</p>", unsafe_allow_html=True)
                 
-                # --- BLOCO 1: INFORMAÇÕES PESSOAIS ---
                 st.markdown("### 📋 Informações Cadastrais")
                 c_info1, c_info2, c_info3 = st.columns(3)
                 
@@ -926,7 +932,6 @@ else:
                     my_tx_ret = dados['Taxa_Retencao_Original'] if 'Taxa_Retencao_Original' in dados else 0.0
                     my_tx_canc = 100 - my_tx_ret if my_tx_ret > 0 else 0.0
                     
-                    # --- MOTOR DE RANKING DE RETENÇÃO (GAMIFICAÇÃO) ---
                     df_ranking = df_periodo.copy()
                     rank_display = "N/A"
                     cor_rank = "#6c757d"
@@ -944,13 +949,13 @@ else:
                             
                             if user_rank == 1:
                                 rank_display = f"🥇 <b>Parabéns!</b> Você é o líder absoluto de Retenção entre {total_agents} operadores!"
-                                cor_rank = "#ffc107" # Ouro
+                                cor_rank = "#ffc107" 
                             elif user_rank <= 3:
                                 rank_display = f"🥈 <b>Top {user_rank}!</b> Você é um dos melhores de um grupo de {total_agents} operadores!"
-                                cor_rank = "#17a2b8" # Azul destaque
+                                cor_rank = "#17a2b8" 
                             else:
                                 rank_display = f"🏆 <b>{user_rank}º Lugar</b> de {total_agents} operadores. <i>(O 1º lugar está com {top_retencao:.2f}%)</i>"
-                                cor_rank = "#007bff" # Azul padrão
+                                cor_rank = "#007bff" 
                         else:
                             rank_display = "Dados insuficientes para gerar o seu ranking neste mês."
                             
@@ -961,7 +966,6 @@ else:
                         </div>
                     """, unsafe_allow_html=True)
                     
-                    # --- BLOCO 2: QUALIDADE ---
                     st.markdown("### ⭐ Qualidade e Processos")
                     ca1, ca2, ca3, ca4 = st.columns(4)
                     with ca1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>O Meu CSAT</div><div class='kpi-value'>{my_csat:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
@@ -969,7 +973,6 @@ else:
                     with ca3: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>Conformidade (Escala)</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
                     with ca4: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>Aderência (Pausas)</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
 
-                    # --- BLOCO 3: PRODUTIVIDADE ---
                     st.markdown("### 🎧 Produtividade e Retenção")
                     co1, co2, co3, co4 = st.columns(4)
                     with co1: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Chats Atendidos</div><div class='kpi-value'>{int(dados['Vol. Chat']) if pd.notna(dados['Vol. Chat']) else 0}</div></div>", unsafe_allow_html=True)
@@ -991,6 +994,32 @@ else:
                             <h2>{mes_ferias_cadastrado.upper()}</h2>
                         </div>
                     """, unsafe_allow_html=True)
+
+            # --- NOVA ABA: WIKI E BASE DE CONHECIMENTO ---
+            with aba_wiki:
+                st.markdown("### 📚 Base de Conhecimento (Wiki)")
+                st.markdown("Bem-vindo à Wiki da Operação! Aqui encontra todos os materiais, roteiros, manuais e dicas essenciais para o seu dia a dia.")
+                
+                st.info("💡 **Dica:** Guarde o link do Drive nos seus favoritos para acesso rápido durante os atendimentos.")
+                
+                st.markdown("""
+                    <div style='background-color: #f8f9fa; border: 1px solid #e9ecef; border-left: 5px solid #ffc107; padding: 25px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0px 2px 5px rgba(0,0,0,0.02);'>
+                        <h3 style='margin: 0; color: #343a40;'>📁 Repositório Oficial de Materiais</h3>
+                        <p style='color: #6c757d; font-size: 16px; margin-top: 10px; margin-bottom: 20px;'>
+                            Aceda à nossa pasta oficial no Google Drive. Lá encontrará atualizações de ofertas, comunicados, regras de negócio e guiões de retenção.
+                        </p>
+                        <a href='COLE_AQUI_SEU_LINK_DO_DRIVE' target='_blank' class='btn-wiki'>
+                            🔗 Aceder à Pasta no Google Drive
+                        </a>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown("#### 📌 O que vai encontrar no nosso repositório?")
+                c_w1, c_w2 = st.columns(2)
+                with c_w1:
+                    st.markdown("✔️ Manuais de Sistemas e Plataformas\n✔️ Scripts de Retenção e Argumentação\n✔️ Dicas de Qualidade e CSAT")
+                with c_w2:
+                    st.markdown("✔️ Regras de Ponto, Pausas e Escala\n✔️ Comunicados Oficiais\n✔️ Atualizações de Planos e Ofertas")
 
             with aba_conta:
                 st.markdown("### ⚙️ Configurações de Segurança")
