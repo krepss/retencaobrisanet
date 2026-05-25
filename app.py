@@ -153,7 +153,7 @@ if not st.session_state.logged_in:
     restaurar_sessao()
 
 # ==========================================
-# FUNÇÕES DE LEITURA E GRAVAÇÃO VIA API GITHUB E UTILITÁRIAS
+# FUNÇÕES DE LEITURA E GRAVAÇÃO VIA API GITHUB
 # ==========================================
 def ler_csv_via_api_github(nome_arquivo):
     g = Github(st.secrets["GITHUB_TOKEN"])
@@ -349,94 +349,97 @@ else:
     # VISÃO DO GESTOR
     # ==========================================
     if st.session_state.perfil == "Gestor":
-        # ABA DE PONTO ADICIONADA AQUI
-        aba_dashboard, aba_upload, aba_equipe, aba_ferias, aba_ponto = st.tabs([
-            "📊 Dashboard de Indicadores", 
-            "⚙️ Consolidação (Mensal)", 
-            "👥 Gestão da Equipa",
+        
+        # ESTRUTURA GERAL DOS DADOS DE STATUS (Reutilizada em todas as abas)
+        df_periodo_mapeado = df_periodo.copy()
+        if not df_periodo_mapeado.empty:
+            def identificar_status_unificado(row):
+                if str(row.get('STATUS', 'ATIVO')).strip().upper() == 'AFASTADO': return 'Afastado'
+                mes_ferias = str(row.get('FÉRIAS 2026', '')).strip().upper()
+                if mes_ferias == mes_view.upper(): return 'Férias'
+                return 'Ativo'
+            df_periodo_mapeado['Status_Dinamico'] = df_periodo_mapeado.apply(identificar_status_unificado, axis=1)
+
+        # ABAS DO GESTOR (INCLUINDO INTELIGÊNCIA DE RETENÇÃO)
+        aba_dashboard, aba_retencao, aba_ponto, aba_equipe, aba_ferias, aba_upload = st.tabs([
+            "📊 Dashboard Geral", 
+            "🎯 Inteligência de Retenção",
+            "⏰ Banco de Horas",
+            "👥 Gestão da Equipe",
             "🌴 Calendário de Férias",
-            "⏰ Banco de Horas"
+            "⚙️ Consolidação (Upload)"
         ])
         
-        with aba_equipe:
-            st.header("👥 Cadastro Unificado de Equipa (Mestre)")
-            st.info("💡 **Dica:** Esta é a sua Fonte Única de Verdades. O status e o mês de férias inseridos aqui serão lidos automaticamente por todo o Dashboard.")
-            try:
-                df_users_atual = ler_csv_via_api_github("dados_usuarios.csv")
+        # --- NOVA ABA: INTELIGÊNCIA DE RETENÇÃO ---
+        with aba_retencao:
+            st.header("🎯 Inteligência e Qualidade de Retenção")
+            
+            if not base_mestre_existe or df_periodo_mapeado.empty:
+                st.warning("Não há dados processados para gerar as análises de retenção neste mês.")
+            else:
+                df_ret_ativos = df_periodo_mapeado[df_periodo_mapeado['Status_Dinamico'] == 'Ativo'].copy()
                 
-                if 'Nome' in df_users_atual.columns:
-                    if 'COLABORADOR' not in df_users_atual.columns: df_users_atual.rename(columns={'Nome': 'COLABORADOR'}, inplace=True)
-                    else: df_users_atual.drop(columns=['Nome'], inplace=True)
-                if 'E-mail' in df_users_atual.columns:
-                    if 'E-MAIL' not in df_users_atual.columns: df_users_atual.rename(columns={'E-mail': 'E-MAIL'}, inplace=True)
-                    else: df_users_atual.drop(columns=['E-mail'], inplace=True)
+                if 'Taxa_Retencao_Original' in df_ret_ativos.columns and 'RT geral calculado' in df_ret_ativos.columns:
+                    # Isola apenas quem teve tentativas de cancelamento
+                    df_ret_ativos = df_ret_ativos[df_ret_ativos['RT geral calculado'] > 0]
+                    
+                    if df_ret_ativos.empty:
+                        st.info("Nenhuma oportunidade de retenção registrada para os operadores ativos neste mês.")
+                    else:
+                        # 1. Panorama Global
+                        tot_oportunidades = df_ret_ativos['RT geral calculado'].sum()
+                        tot_retidos = df_ret_ativos['RT geral valido'].sum()
+                        tot_perdidos = tot_oportunidades - tot_retidos
+                        taxa_global = (tot_retidos / tot_oportunidades * 100) if tot_oportunidades > 0 else 0
+                        
+                        c_ret1, c_ret2, c_ret3, c_ret4 = st.columns(4)
+                        with c_ret1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Total de Intenções</div><div class='kpi-value'>{int(tot_oportunidades):,}</div><div style='font-size:11px;color:#6c757d;'>Chamadas de Cancelamento</div></div>", unsafe_allow_html=True)
+                        with c_ret2: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Clientes Salvos</div><div class='kpi-value' style='color:#28a745;'>{int(tot_retidos):,}</div><div style='font-size:11px;color:#28a745;'>Sucesso</div></div>", unsafe_allow_html=True)
+                        with c_ret3: st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>Clientes Perdidos</div><div class='kpi-value' style='color:#dc3545;'>{int(tot_perdidos):,}</div><div style='font-size:11px;color:#dc3545;'>Churn</div></div>", unsafe_allow_html=True)
+                        with c_ret4: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>Retenção Global</div><div class='kpi-value'>{taxa_global:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_RETENCAO}%</div></div>", unsafe_allow_html=True)
+                        
+                        st.markdown("---")
+                        
+                        # 2. Matriz de Risco (Volume vs Taxa)
+                        st.subheader("⚠️ Matriz de Risco Operacional")
+                        st.markdown("Identifique quem recebe muitas chamadas de cancelamento e salva poucos clientes (Quadrante Inferior Direito = **Risco Alto**).")
+                        
+                        fig_scatter = px.scatter(df_ret_ativos, 
+                                                 x='RT geral calculado', 
+                                                 y='Taxa_Retencao_Original',
+                                                 size='RT geral calculado', 
+                                                 color='Taxa_Retencao_Original',
+                                                 color_continuous_scale=['#dc3545', '#ffc107', '#28a745'],
+                                                 hover_name='Nome Exibição',
+                                                 labels={'RT geral calculado': 'Total de Oportunidades (Volume)', 'Taxa_Retencao_Original': 'Taxa de Retenção (%)'},
+                                                 title="Impacto de Volume x Eficiência de Retenção")
+                        
+                        # Adiciona a linha da Meta para separar os bons dos ruins
+                        fig_scatter.add_hline(y=META_RETENCAO, line_dash="dash", line_color="green", annotation_text=f"Meta ({META_RETENCAO}%)")
+                        st.plotly_chart(fig_scatter, use_container_width=True)
 
-                colunas_esperadas = ['COLABORADOR', 'E-MAIL', 'FÉRIAS 2026', 'STATUS', 'SENHA', 'ADMISSÃO']
-                for col in colunas_esperadas:
-                    if col not in df_users_atual.columns: df_users_atual[col] = ""
-
-                df_users_atual = df_users_atual[colunas_esperadas]
-                df_users_editado = st.data_editor(df_users_atual, num_rows="dynamic", use_container_width=True, key="ed_usr")
-                
-                if st.button("💾 Guardar Base Mestre de Utilizadores", type="primary"):
-                    enviar_para_github("dados_usuarios.csv", df_users_editado.to_csv(index=False))
-                    st.cache_data.clear()
-                    st.success("Equipa guardada com sucesso!")
-                    time.sleep(0.5)
-                    st.rerun()
-            except Exception: 
-                st.warning("Faça o upload do seu CSV de utilizadores para começar.")
-                up_arq = st.file_uploader("Upload Ficheiro de Utilizadores", type=['csv'])
-                if up_arq and st.button("Criar"):
-                    enviar_para_github("dados_usuarios.csv", up_arq)
-                    st.rerun()
-
-        with aba_ferias:
-            st.header("🌴 Gestão e Calendário de Férias")
-            st.markdown("Tenha uma visão rápida de quem sai de folga em cada mês para não sobrecarregar a escala de atendimento.")
-            try:
-                df_ferias = ler_csv_via_api_github("dados_usuarios.csv")
-                
-                df_grafico_ferias = df_ferias.copy()
-                df_grafico_ferias['FÉRIAS 2026'] = df_grafico_ferias['FÉRIAS 2026'].fillna('').astype(str).str.strip().str.title()
-                df_grafico_ferias = df_grafico_ferias[df_grafico_ferias['FÉRIAS 2026'] != '']
-                df_grafico_ferias = df_grafico_ferias[df_grafico_ferias['FÉRIAS 2026'] != 'Nan']
-                
-                if not df_grafico_ferias.empty:
-                    resumo_mes = df_grafico_ferias.groupby('FÉRIAS 2026').size().reset_index(name='Operadores Ausentes')
-                    ordem_meses = {mes: i for i, mes in enumerate(MESES)}
-                    resumo_mes['Ordem'] = resumo_mes['FÉRIAS 2026'].map(ordem_meses)
-                    resumo_mes = resumo_mes.sort_values('Ordem').drop('Ordem', axis=1)
-
-                    fig_ferias = px.bar(resumo_mes, x='FÉRIAS 2026', y='Operadores Ausentes', text='Operadores Ausentes',
-                                        title="📊 Distribuição de Férias Programadas (Por Mês)", 
-                                        color_discrete_sequence=['#1e88e5'])
-                    fig_ferias.update_traces(textposition='auto', textfont_size=16, textfont_color="white")
-                    st.plotly_chart(fig_ferias, use_container_width=True)
+                        st.markdown("---")
+                        
+                        # 3. Pódio e Foco Crítico
+                        c_rank1, c_rank2 = st.columns(2)
+                        df_ordenado = df_ret_ativos.sort_values(by='Taxa_Retencao_Original', ascending=False)
+                        
+                        with c_rank1:
+                            st.markdown("#### 🏆 Top 3 - Excelência em Retenção")
+                            top3 = df_ordenado.head(3)
+                            for i, row in top3.reset_index().iterrows():
+                                icone = "🥇" if i==0 else ("🥈" if i==1 else "🥉")
+                                st.markdown(f"<div style='background-color:#f6ffed; border-left: 4px solid #28a745; padding: 10px; margin-bottom: 8px; border-radius: 4px;'><b>{icone} {row['Nome Exibição']}</b><br/>Taxa: <b>{row['Taxa_Retencao_Original']:.2f}%</b> (Salvou {int(row['RT geral valido'])} de {int(row['RT geral calculado'])})</div>", unsafe_allow_html=True)
+                                
+                        with c_rank2:
+                            st.markdown("#### 🚨 Top 3 - Foco para Feedback (Ofensores)")
+                            bottom3 = df_ordenado.tail(3).sort_values(by='Taxa_Retencao_Original', ascending=True)
+                            for i, row in bottom3.reset_index().iterrows():
+                                st.markdown(f"<div style='background-color:#fff5f5; border-left: 4px solid #dc3545; padding: 10px; margin-bottom: 8px; border-radius: 4px;'><b>📉 {row['Nome Exibição']}</b><br/>Taxa: <b>{row['Taxa_Retencao_Original']:.2f}%</b> (Perdeu {int(row['RT geral calculado'] - row['RT geral valido'])} clientes)</div>", unsafe_allow_html=True)
                 else:
-                    st.info("Nenhuma programação de férias lançada até ao momento.")
-                
-                st.markdown("---")
-                st.markdown("#### ✏️ Lançamento Rápido de Férias")
-                st.info("As alterações feitas nesta tabela atualizam automaticamente a base mestre (sem o risco de mexer nas palavras-passe).")
-                
-                colunas_ferias = ['COLABORADOR', 'STATUS', 'FÉRIAS 2026']
-                df_edicao_ferias = df_ferias[colunas_ferias].copy()
-                
-                df_ferias_salvo = st.data_editor(df_edicao_ferias, num_rows="dynamic", use_container_width=True, key="ed_ferias_rapida")
-                
-                if st.button("💾 Guardar Calendário de Férias", type="primary"):
-                    df_ferias['STATUS'] = df_ferias_salvo['STATUS']
-                    df_ferias['FÉRIAS 2026'] = df_ferias_salvo['FÉRIAS 2026']
-                    enviar_para_github("dados_usuarios.csv", df_ferias.to_csv(index=False))
-                    st.cache_data.clear()
-                    st.success("Férias atualizadas com sucesso!")
-                    time.sleep(0.5)
-                    st.rerun()
-            except Exception:
-                st.warning("Base de utilizadores indisponível.")
+                    st.info("A base de dados atual não possui as colunas de retenção estruturadas corretamente.")
 
-        # --- NOVA ABA: BANCO DE HORAS ---
+        # --- ABA BANCO DE HORAS ---
         with aba_ponto:
             st.header("⏰ Verificação de Banco de Horas")
             st.markdown("Faça o upload do relatório de **Saldo de Horas** extraído do sistema para analisar os saldos da equipa.")
@@ -445,15 +448,12 @@ else:
             
             if arquivo_ponto:
                 try:
-                    # O arquivo padrão tem um cabeçalho inútil nas 4 primeiras linhas. O skiprows=4 pula direto para os dados.
                     if arquivo_ponto.name.endswith('.csv'):
                         df_ponto = pd.read_csv(arquivo_ponto, skiprows=4, sep=None, engine='python')
                     else:
                         df_ponto = pd.read_excel(arquivo_ponto, skiprows=4)
                     
                     if 'Nome' in df_ponto.columns and 'Total Banco' in df_ponto.columns:
-                        
-                        # Função inteligente para calcular se o saldo é positivo ou negativo em minutos
                         def calcular_minutos_ponto(val):
                             if pd.isna(val): return 0
                             val_str = str(val).strip()
@@ -519,6 +519,87 @@ else:
                 except Exception as e:
                     st.error(f"Ocorreu um erro na leitura do ficheiro de ponto: {e}")
 
+        # ABA GESTÃO DA EQUIPE
+        with aba_equipe:
+            st.header("👥 Cadastro Unificado de Equipa (Mestre)")
+            st.info("💡 **Dica:** Esta é a sua Fonte Única de Verdades. O status e o mês de férias inseridos aqui serão lidos automaticamente por todo o Dashboard.")
+            try:
+                df_users_atual = ler_csv_via_api_github("dados_usuarios.csv")
+                
+                if 'Nome' in df_users_atual.columns:
+                    if 'COLABORADOR' not in df_users_atual.columns: df_users_atual.rename(columns={'Nome': 'COLABORADOR'}, inplace=True)
+                    else: df_users_atual.drop(columns=['Nome'], inplace=True)
+                if 'E-mail' in df_users_atual.columns:
+                    if 'E-MAIL' not in df_users_atual.columns: df_users_atual.rename(columns={'E-mail': 'E-MAIL'}, inplace=True)
+                    else: df_users_atual.drop(columns=['E-mail'], inplace=True)
+
+                colunas_esperadas = ['COLABORADOR', 'E-MAIL', 'FÉRIAS 2026', 'STATUS', 'SENHA', 'ADMISSÃO']
+                for col in colunas_esperadas:
+                    if col not in df_users_atual.columns: df_users_atual[col] = ""
+
+                df_users_atual = df_users_atual[colunas_esperadas]
+                df_users_editado = st.data_editor(df_users_atual, num_rows="dynamic", use_container_width=True, key="ed_usr")
+                
+                if st.button("💾 Guardar Base Mestre de Utilizadores", type="primary"):
+                    enviar_para_github("dados_usuarios.csv", df_users_editado.to_csv(index=False))
+                    st.cache_data.clear()
+                    st.success("Equipa guardada com sucesso!")
+                    time.sleep(0.5)
+                    st.rerun()
+            except Exception: 
+                st.warning("Faça o upload do seu CSV de utilizadores para começar.")
+                up_arq = st.file_uploader("Upload Ficheiro de Utilizadores", type=['csv'])
+                if up_arq and st.button("Criar"):
+                    enviar_para_github("dados_usuarios.csv", up_arq)
+                    st.rerun()
+
+        # ABA FÉRIAS
+        with aba_ferias:
+            st.header("🌴 Gestão e Calendário de Férias")
+            st.markdown("Tenha uma visão rápida de quem sai de folga em cada mês para não sobrecarregar a escala de atendimento.")
+            try:
+                df_ferias = ler_csv_via_api_github("dados_usuarios.csv")
+                
+                df_grafico_ferias = df_ferias.copy()
+                df_grafico_ferias['FÉRIAS 2026'] = df_grafico_ferias['FÉRIAS 2026'].fillna('').astype(str).str.strip().str.title()
+                df_grafico_ferias = df_grafico_ferias[df_grafico_ferias['FÉRIAS 2026'] != '']
+                df_grafico_ferias = df_grafico_ferias[df_grafico_ferias['FÉRIAS 2026'] != 'Nan']
+                
+                if not df_grafico_ferias.empty:
+                    resumo_mes = df_grafico_ferias.groupby('FÉRIAS 2026').size().reset_index(name='Operadores Ausentes')
+                    ordem_meses = {mes: i for i, mes in enumerate(MESES)}
+                    resumo_mes['Ordem'] = resumo_mes['FÉRIAS 2026'].map(ordem_meses)
+                    resumo_mes = resumo_mes.sort_values('Ordem').drop('Ordem', axis=1)
+
+                    fig_ferias = px.bar(resumo_mes, x='FÉRIAS 2026', y='Operadores Ausentes', text='Operadores Ausentes',
+                                        title="📊 Distribuição de Férias Programadas (Por Mês)", 
+                                        color_discrete_sequence=['#1e88e5'])
+                    fig_ferias.update_traces(textposition='auto', textfont_size=16, textfont_color="white")
+                    st.plotly_chart(fig_ferias, use_container_width=True)
+                else:
+                    st.info("Nenhuma programação de férias lançada até ao momento.")
+                
+                st.markdown("---")
+                st.markdown("#### ✏️ Lançamento Rápido de Férias")
+                st.info("As alterações feitas nesta tabela atualizam automaticamente a base mestre (sem o risco de mexer nas palavras-passe).")
+                
+                colunas_ferias = ['COLABORADOR', 'STATUS', 'FÉRIAS 2026']
+                df_edicao_ferias = df_ferias[colunas_ferias].copy()
+                
+                df_ferias_salvo = st.data_editor(df_edicao_ferias, num_rows="dynamic", use_container_width=True, key="ed_ferias_rapida")
+                
+                if st.button("💾 Guardar Calendário de Férias", type="primary"):
+                    df_ferias['STATUS'] = df_ferias_salvo['STATUS']
+                    df_ferias['FÉRIAS 2026'] = df_ferias_salvo['FÉRIAS 2026']
+                    enviar_para_github("dados_usuarios.csv", df_ferias.to_csv(index=False))
+                    st.cache_data.clear()
+                    st.success("Férias atualizadas com sucesso!")
+                    time.sleep(0.5)
+                    st.rerun()
+            except Exception:
+                st.warning("Base de utilizadores indisponível.")
+
+        # ABA UPLOAD
         with aba_upload:
             st.header("⚙️ Central de Consolidação de Relatórios")
             
@@ -603,20 +684,11 @@ else:
                         st.rerun()
                     except Exception as e: st.error(f"Erro no processamento: {e}")
 
+        # ABA DASHBOARD GERAL
         with aba_dashboard:
             if not base_mestre_existe: st.warning("📢 Base mestre indisponível.")
             elif not dados_carregados: st.warning(f"⚠️ {erro_dados}")
             else:
-                df_periodo_mapeado = df_periodo.copy()
-                
-                def identificar_status_unificado(row):
-                    if str(row.get('STATUS', 'ATIVO')).strip().upper() == 'AFASTADO': return 'Afastado'
-                    mes_ferias = str(row.get('FÉRIAS 2026', '')).strip().upper()
-                    if mes_ferias == mes_view.upper(): return 'Férias'
-                    return 'Ativo'
-                
-                df_periodo_mapeado['Status_Dinamico'] = df_periodo_mapeado.apply(identificar_status_unificado, axis=1)
-
                 modo_visao = st.radio("Filtro de Quadro Operacional:", ["Mostrar Apenas Ativos", "Mostrar Todos (Incluir Férias/Afastados do Período)"], horizontal=True)
                 
                 if modo_visao == "Mostrar Apenas Ativos": df_calculado = df_periodo_mapeado[df_periodo_mapeado['Status_Dinamico'] == 'Ativo'].copy()
@@ -825,6 +897,7 @@ else:
             with aba_desempenho:
                 st.markdown(f"<p style='color: #6c757d; font-size: 16px;'>Acompanhe o seu desempenho e metas referentes a <b>{mes_view} de {ano_view}</b>.</p>", unsafe_allow_html=True)
                 
+                # --- BLOCO 1: INFORMAÇÕES PESSOAIS ---
                 st.markdown("### 📋 Informações Cadastrais")
                 c_info1, c_info2, c_info3 = st.columns(3)
                 
@@ -853,6 +926,7 @@ else:
                     my_tx_ret = dados['Taxa_Retencao_Original'] if 'Taxa_Retencao_Original' in dados else 0.0
                     my_tx_canc = 100 - my_tx_ret if my_tx_ret > 0 else 0.0
                     
+                    # --- MOTOR DE RANKING DE RETENÇÃO (GAMIFICAÇÃO) ---
                     df_ranking = df_periodo.copy()
                     rank_display = "N/A"
                     cor_rank = "#6c757d"
@@ -870,13 +944,13 @@ else:
                             
                             if user_rank == 1:
                                 rank_display = f"🥇 <b>Parabéns!</b> Você é o líder absoluto de Retenção entre {total_agents} operadores!"
-                                cor_rank = "#ffc107" 
+                                cor_rank = "#ffc107" # Ouro
                             elif user_rank <= 3:
                                 rank_display = f"🥈 <b>Top {user_rank}!</b> Você é um dos melhores de um grupo de {total_agents} operadores!"
-                                cor_rank = "#17a2b8" 
+                                cor_rank = "#17a2b8" # Azul destaque
                             else:
                                 rank_display = f"🏆 <b>{user_rank}º Lugar</b> de {total_agents} operadores. <i>(O 1º lugar está com {top_retencao:.2f}%)</i>"
-                                cor_rank = "#007bff" 
+                                cor_rank = "#007bff" # Azul padrão
                         else:
                             rank_display = "Dados insuficientes para gerar o seu ranking neste mês."
                             
@@ -887,6 +961,7 @@ else:
                         </div>
                     """, unsafe_allow_html=True)
                     
+                    # --- BLOCO 2: QUALIDADE ---
                     st.markdown("### ⭐ Qualidade e Processos")
                     ca1, ca2, ca3, ca4 = st.columns(4)
                     with ca1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>O Meu CSAT</div><div class='kpi-value'>{my_csat:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
@@ -894,6 +969,7 @@ else:
                     with ca3: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>Conformidade (Escala)</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
                     with ca4: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>Aderência (Pausas)</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
 
+                    # --- BLOCO 3: PRODUTIVIDADE ---
                     st.markdown("### 🎧 Produtividade e Retenção")
                     co1, co2, co3, co4 = st.columns(4)
                     with co1: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Chats Atendidos</div><div class='kpi-value'>{int(dados['Vol. Chat']) if pd.notna(dados['Vol. Chat']) else 0}</div></div>", unsafe_allow_html=True)
