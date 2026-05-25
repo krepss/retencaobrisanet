@@ -228,7 +228,6 @@ if not st.session_state.logged_in:
     with col_login:
         aba_login, aba_novo = st.tabs(["🔐 Acessar Sistema", "🆕 Primeiro Acesso (Criar Senha)"])
         
-        # --- ABA DE LOGIN NORMAL ---
         with aba_login:
             with st.form("form_login"):
                 st.markdown("#### Entrar")
@@ -258,7 +257,6 @@ if not st.session_state.logged_in:
                             dados_usr = df_users_login[df_users_login[col_email].str.strip().str.lower() == email_limpo].iloc[0]
                             senha_correta = str(dados_usr.get('SENHA', '')).strip()
                             
-                            # VALIDAÇÃO DE PRIMEIRO ACESSO OBRIGATÓRIO
                             if senha_correta == "" or senha_correta.lower() == "nan":
                                 st.warning("⚠️ **Atenção:** Você ainda não possui uma senha registada. Por favor, clique no separador **'Primeiro Acesso'** ao lado para criar a sua senha inicial.")
                             elif senha_limpa == senha_correta:
@@ -276,7 +274,6 @@ if not st.session_state.logged_in:
                         else: st.error("❌ E-mail não encontrado na base de dados. Procure a gestão.")
                     except Exception: st.error("❌ Banco de dados de utilizadores não localizado.")
         
-        # --- ABA DE CRIAÇÃO DE SENHA (PRIMEIRO ACESSO) ---
         with aba_novo:
             with st.form("form_novo_acesso"):
                 st.markdown("#### Criar a minha palavra-passe")
@@ -353,7 +350,7 @@ else:
         ])
         
         with aba_equipe:
-            st.header("👥 Cadastro Unificado de Equipa (Mestre)")
+            st.header("👥 Cadastro Unificado de Equipe (Mestre)")
             st.info("💡 **Dica:** Esta é a sua Fonte Única de Verdades. O status e o mês de férias inseridos aqui serão lidos automaticamente por todo o Dashboard.")
             try:
                 df_users_atual = ler_csv_via_api_github("dados_usuarios.csv")
@@ -706,13 +703,12 @@ else:
                 }), use_container_width=True)
 
     # ==========================================
-    # VISÃO DO AGENTE NOMINAL LOGADO (NOVA UX/UI)
+    # VISÃO DO AGENTE NOMINAL LOGADO (GAMIFICADO)
     # ==========================================
     elif st.session_state.perfil == "Agente":
         if not base_mestre_existe: st.error("⚠️ A configurar o sistema. Tente novamente mais tarde.")
         elif not dados_carregados: st.warning(f"⚠️ {erro_dados}")
         else:
-            # Puxa os dados mestres e dados de férias
             df_users_login = ler_csv_via_api_github("dados_usuarios.csv")
             if 'E-MAIL' in df_users_login.columns: df_users_login.rename(columns={'E-MAIL': 'E-mail'}, inplace=True)
             
@@ -729,7 +725,6 @@ else:
             st.markdown(f"<h2>👋 Olá, {primeiro_nome}!</h2>", unsafe_allow_html=True)
             st.markdown("---")
 
-            # ORGANIZAÇÃO EM SEPARADORES (TABS)
             aba_desempenho, aba_ferias, aba_conta = st.tabs(["📊 O Meu Desempenho", "🌴 As Minhas Férias", "⚙️ A Minha Conta"])
 
             with aba_desempenho:
@@ -753,7 +748,6 @@ else:
                 with c_info3:
                     st.markdown(f"<div class='info-card'><div class='info-title'>Tempo de Empresa</div><div class='info-data'>{tempo_empresa}</div></div>", unsafe_allow_html=True)
 
-                # BUSCA DADOS DE PRODUÇÃO DAQUELE MÊS ESPECÍFICO
                 col_email_periodo = 'E-MAIL' if 'E-MAIL' in df_periodo.columns else 'E-mail'
                 meus_dados = df_periodo[df_periodo[col_email_periodo].str.strip().str.lower() == st.session_state.user_email.strip().lower()]
                 
@@ -764,6 +758,41 @@ else:
                     my_ir = (dados['Sim_Pesq_IR'] / dados['Total_Pesq_IR'] * 100) if tem_colunas_novas and dados['Total_Pesq_IR'] > 0 else 0.0
                     my_tx_ret = dados['Taxa_Retencao_Original'] if 'Taxa_Retencao_Original' in dados else 0.0
                     my_tx_canc = 100 - my_tx_ret if my_tx_ret > 0 else 0.0
+                    
+                    # --- MOTOR DE RANKING DE RETENÇÃO (GAMIFICAÇÃO) ---
+                    df_ranking = df_periodo.copy()
+                    rank_display = "N/A"
+                    cor_rank = "#6c757d"
+                    
+                    if 'Taxa_Retencao_Original' in df_ranking.columns:
+                        df_ranking = df_ranking.dropna(subset=['Taxa_Retencao_Original'])
+                        df_ranking = df_ranking.sort_values(by='Taxa_Retencao_Original', ascending=False).reset_index(drop=True)
+                        df_ranking['email_clean'] = df_ranking[col_email_periodo].astype(str).str.strip().str.lower()
+                        
+                        user_email_clean = st.session_state.user_email.strip().lower()
+                        if user_email_clean in df_ranking['email_clean'].values:
+                            user_rank = df_ranking[df_ranking['email_clean'] == user_email_clean].index[0] + 1
+                            total_agents = len(df_ranking)
+                            top_retencao = df_ranking['Taxa_Retencao_Original'].iloc[0]
+                            
+                            if user_rank == 1:
+                                rank_display = f"🥇 <b>Parabéns!</b> Você é o líder absoluto de Retenção entre {total_agents} operadores!"
+                                cor_rank = "#ffc107" # Ouro
+                            elif user_rank <= 3:
+                                rank_display = f"🥈 <b>Top {user_rank}!</b> Você é um dos melhores de um grupo de {total_agents} operadores!"
+                                cor_rank = "#17a2b8" # Azul destaque
+                            else:
+                                rank_display = f"🏆 <b>{user_rank}º Lugar</b> de {total_agents} operadores. <i>(O 1º lugar está com {top_retencao:.2f}%)</i>"
+                                cor_rank = "#007bff" # Azul padrão
+                        else:
+                            rank_display = "Dados insuficientes para gerar o seu ranking neste mês."
+                            
+                    st.markdown(f"""
+                        <div style='background-color: #ffffff; border: 1px solid #e9ecef; border-left: 5px solid {cor_rank}; padding: 15px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0px 2px 5px rgba(0,0,0,0.02);'>
+                            <h4 style='margin: 0; color: #6c757d; font-size: 13px; text-transform: uppercase;'>O Seu Ranking na Equipa (Retenção)</h4>
+                            <p style='margin: 5px 0 0 0; color: #343a40; font-size: 18px;'>{rank_display}</p>
+                        </div>
+                    """, unsafe_allow_html=True)
                     
                     # --- BLOCO 2: QUALIDADE ---
                     st.markdown("### ⭐ Qualidade e Processos")
@@ -787,7 +816,7 @@ else:
             with aba_ferias:
                 st.markdown("### 🌴 Planeamento Anual de Férias")
                 if mes_ferias_cadastrado == "Não programadas":
-                    st.info("Você ainda não tem um mês de férias programado no sistema para este ano. Entre em contacto com a gestão para realizar o seu planeamento.")
+                    st.info("Ainda não tem um mês de férias programado no sistema para este ano. Entre em contacto com a gestão para realizar o planeamento.")
                 else:
                     st.success(f"🎉 O seu descanso está garantido! As suas férias estão planeadas para o mês de **{mes_ferias_cadastrado}**.")
                     st.markdown(f"""
