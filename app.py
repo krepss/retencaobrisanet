@@ -274,34 +274,25 @@ else:
             try:
                 df_users_atual = ler_csv_via_api_github("dados_usuarios.csv")
                 
-                # --- LIMPEZA DE COLUNAS VELHAS (MIGRAÇÃO) ---
+                # Limpeza e Padronização
                 if 'Nome' in df_users_atual.columns:
-                    if 'COLABORADOR' not in df_users_atual.columns:
-                        df_users_atual.rename(columns={'Nome': 'COLABORADOR'}, inplace=True)
-                    else:
-                        df_users_atual.drop(columns=['Nome'], inplace=True)
-                        
+                    if 'COLABORADOR' not in df_users_atual.columns: df_users_atual.rename(columns={'Nome': 'COLABORADOR'}, inplace=True)
+                    else: df_users_atual.drop(columns=['Nome'], inplace=True)
                 if 'E-mail' in df_users_atual.columns:
-                    if 'E-MAIL' not in df_users_atual.columns:
-                        df_users_atual.rename(columns={'E-mail': 'E-MAIL'}, inplace=True)
-                    else:
-                        df_users_atual.drop(columns=['E-mail'], inplace=True)
+                    if 'E-MAIL' not in df_users_atual.columns: df_users_atual.rename(columns={'E-mail': 'E-MAIL'}, inplace=True)
+                    else: df_users_atual.drop(columns=['E-mail'], inplace=True)
 
-                # Garante as colunas novas
                 colunas_esperadas = ['COLABORADOR', 'E-MAIL', 'FÉRIAS 2026', 'STATUS', 'SENHA', 'ADMISSÃO']
                 for col in colunas_esperadas:
-                    if col not in df_users_atual.columns:
-                        df_users_atual[col] = ""
+                    if col not in df_users_atual.columns: df_users_atual[col] = ""
 
-                # Força a tabela a mostrar ESTRITAMENTE as colunas padronizadas, ignorando o lixo anterior
                 df_users_atual = df_users_atual[colunas_esperadas]
-
                 df_users_editado = st.data_editor(df_users_atual, num_rows="dynamic", use_container_width=True, key="ed_usr")
                 
                 if st.button("💾 Salvar Base Mestre de Usuários", type="primary"):
                     enviar_para_github("dados_usuarios.csv", df_users_editado.to_csv(index=False))
                     st.cache_data.clear()
-                    st.success("Equipe salva com sucesso! (Tabela velha apagada da nuvem)")
+                    st.success("Equipe salva com sucesso!")
                     time.sleep(0.5)
                     st.rerun()
             except Exception: 
@@ -314,6 +305,14 @@ else:
         # ABA UPLOAD
         with aba_upload:
             st.header("⚙️ Central de Consolidação de Relatórios")
+            
+            # --- RESTAURADO: SELEÇÃO DE MÊS E ANO PARA O UPLOAD ---
+            col_m, col_a = st.columns(2)
+            mes_up = col_m.selectbox("Mês de competência das planilhas:", MESES, index=4)
+            ano_up = col_a.selectbox("Ano de competência das planilhas:", ANOS)
+            st.markdown("---")
+            # ------------------------------------------------------
+            
             arquivos_carregados = st.file_uploader("Arraste e solte os 5 arquivos CSV aqui de uma vez", type=["csv"], accept_multiple_files=True)
             relatorios_identificados = {"Aderência e Conformidade": None, "Pesquisa (CSAT/IR)": None, "Chat": None, "Voz": None, "Retenção": None}
             if arquivos_carregados:
