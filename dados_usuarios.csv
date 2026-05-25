@@ -1,29 +1,27 @@
-Nome,E-mail,Status
-FERNANDA MONIQUE FERNANDES FEITOZA,fernanda.feitoza@grupobrisanet.com.br,Ativo
-MAICON MICHEL ALVES LOPES,maicon.lopes@grupobrisanet.com.br,Ativo
-NATHALIA NAHARA FERNANDES ARAUJO,nathalia.araujo@grupobrisanet.com.br,Ativo
-GUILHERME HENRIQUE DE QUEIROZ SOUZA,henrique.souza@grupobrisanet.com.br,Ativo
-EMERSON IGOR DE SOUZA,emerson.souza@grupobrisanet.com.br,Ativo
-RAISSA LORENA DA SILVA COSTA,raissa.costa@grupobrisanet.com.br,Ativo
-LEONARDO PINHEIRO DE ALBUQUERQUE,leonardo.albuquerque@grupobrisanet.com.br,Ativo
-HELENA TAMIRES OLIVEIRA ARAUJO,helena.araujo@grupobrisanet.com.br,Ativo
-FRANCISCO DAS CHAGAS DE AGUIAR OLIVEIRA,francisco.aguiar@grupobrisanet.com.br,Ativo
-DIONARA GABRIELE COSTA SILVA,dionara.silva@grupobrisanet.com.br,Ativo
-JONATAS MATHEUS DE SOUZA,jonatas.souza@grupobrisanet.com.br,Ativo
-LUIS DAVI DA SILVA SARMENTO,luis.sarmento@grupobrisanet.com.br,Ativo
-CAMILY ISADORA FREITAS GOMES,camily.gomes@grupobrisanet.com.br,Ativo
-GLEDE MARIA DE OLIVEIRA,glede.dmaria@grupobrisanet.com.br,Férias
-IZABELE MONTEIRO DE AQUINO,izabele.monteiro@grupobrisanet.com.br,Ativo
-MARIA MARLINDA DE ALMEIDA,maria.almeida@grupobrisanet.com.br,Ativo
-FABIO JUNIOR AIRES DE OLIVEIRA,fabio.aires@grupobrisanet.com.br,Ativo
-NAYARA KELLY CORREIA,nayara.correia@grupobrisanet.com.br,Ativo
-FRANCIEDNA RIBEIRO DA SILVA,franciedna.silva@grupobrisanet.com.br,Ativo
-YEDLON KAUNEY QUEIROZ LIMA,yedlon.lima@grupobrisanet.com.br,Ativo
-KELLY CRISTINA DANTAS DA SILVA,kelly.silva@grupobrisanet.com.br,Ativo
-RAYSSA BEATHRIZ PEREIRA,rayssa.pereira@grupobrisanet.com.br,Afastado
-ALVARO ANTONIO FERNANDES,alvaro.fernandes@grupobrisanet.com.br,Ativo
-FRANCISCO EVERTON JALES DA SILVA,francisco.everton@grupobrisanet.com.br,Ativo
-ANDERSON LEANDRO ALVES MAIA,anderson.maia@grupobrisanet.com.br,Ativo
-,,
-THAIS MARTINS SOUZA,thais.souza@grupobrisanet.com.br,Ativo
-,,
+COLABORADOR,E-MAIL,FÉRIAS 2026,STATUS,SENHA,ADMISSÃO
+CAMILY ISADORA FREITAS GOMES,camily.gomes@grupobrisanet.com.br,SETEMBRO,ATIVO,,22/07/2024
+NAYARA KELLY CORREIA,nayara.correia@grupobrisanet.com.br,OUTUBRO,ATIVO,,23/09/2024
+RAYSSA BEATHRIZ PEREIRA,rayssa.pereira@grupobrisanet.com.br,OUTUBRO,AFASTADO,,15/09/2025
+KELLY CRISTINA DANTAS DA SILVA,kelly.silva@grupobrisanet.com.br,NOVEMBRO,ATIVO,,15/09/2025
+HELENA TAMIRES OLIVEIRA ARAUJO,helena.araujo@grupobrisanet.com.br,NOVEMBRO,ATIVO,,15/09/2025
+NATHALIA NAHARA FERNANDES ARAUJO,nathalia.araujo@grupobrisanet.com.br,MARÇO,ATIVO,,06/01/2025
+EMERSON IGOR DE SOUZA,emerson.souza@grupobrisanet.com.br,JUNHO,ATIVO,,06/05/2025
+YEDLON KAUNEY QUEIROZ LIMA,yedlon.lima@grupobrisanet.com.br,JUNHO,ATIVO,,05/05/2025
+FABIO JUNIOR AIRES DE OLIVEIRA,fabio.aires@grupobrisanet.com.br,JULHO,ATIVO,,07/05/2025
+IZABELE MONTEIRO DE AQUINO,izabele.monteiro@grupobrisanet.com.br,FEVEREIRO,ATIVO,,02/12/2024
+GUILHERME HENRIQUE DE QUEIROZ SOUZA,henrique.souza@grupobrisanet.com.br,FEVEREIRO,ATIVO,,02/12/2024
+MAICON MICHEL ALVES LOPES,maicon.lopes@grupobrisanet.com.br,DEZEMBRO,ATIVO,,23/09/2024
+FRANCIEDNA RIBEIRO DA SILVA,franciedna.silva@grupobrisanet.com.br,DEZEMBRO,ATIVO,,15/09/2025
+FERNANDA MONIQUE FERNANDES FEITOZA,fernanda.feitoza@grupobrisanet.com.br,AGOSTO,ATIVO,,22/07/2024
+GLEDE MARIA DE OLIVEIRA,glede.dmaria@grupobrisanet.com.br,MAIO,ATIVO,,07/03/2022
+MARIA MARLINDA DE ALMEIDA,maria.almeida@grupobrisanet.com.br,2027,ATIVO,,23/09/2024
+LEONARDO PINHEIRO DE ALBUQUERQUE,leonardo.albuquerque@grupobrisanet.com.br,2027,ATIVO,,15/09/2025
+RAISSA LORENA DA SILVA COSTA,raissa.costa@grupobrisanet.com.br,2027,ATIVO,,15/09/2025
+DIONARA GABRIELE COSTA SILVA,dionara.silva@grupobrisanet.com.br,2027,ATIVO,,15/09/2025
+FRANCISCO DAS CHAGAS DE AGUIAR OLIVEIRA,francisco.aguiar@grupobrisanet.com.br,2027,ATIVO,,15/09/2025
+ALVARO ANTONIO FERNANDES,alvaro.fernandes@grupobrisanet.com.br,2027,ATIVO,,03/11/2025
+FRANCISCO EVERTON JALES DA SILVA,francisco.everton@grupobrisanet.com.br,2027,ATIVO,,05/01/2026
+JONATAS MATHEUS DE SOUZA,jonatas.souza@grupobrisanet.com.br,2027,ATIVO,,05/01/2026
+LUIS DAVI DA SILVA SARMENTO,luis.sarmento@grupobrisanet.com.br,2027,ATIVO,,05/01/2026
+ANDERSON LEANDRO ALVES MAIA,anderson.maia@grupobrisanet.com.br,2027,ATIVO,,05/01/2026
+THAIS MARTINS SOUZA,thais.souza@grupobrisanet.com.br,2027,ATIVO,,23/03/2026
