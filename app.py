@@ -1008,7 +1008,7 @@ else:
                         <p style='color: #6c757d; font-size: 16px; margin-top: 10px; margin-bottom: 20px;'>
                             Aceda à nossa pasta oficial no Google Drive. Lá encontrará atualizações de ofertas, comunicados, regras de negócio e guiões de retenção.
                         </p>
-                        <a href='COLE_AQUI_SEU_LINK_DO_DRIVE' target='_blank' class='btn-wiki'>
+                        <a href='https://drive.google.com/drive/folders/1qvSLoEiVKpGRO0KB4Ljh1fXNUOk28Itp' target='_blank' class='btn-wiki'>
                             🔗 Aceder à Pasta no Google Drive
                         </a>
                     </div>
