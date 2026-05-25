@@ -252,7 +252,6 @@ if not st.session_state.logged_in:
                         df_users_login = ler_csv_via_api_github("dados_usuarios.csv")
                         col_email = 'E-MAIL' if 'E-MAIL' in df_users_login.columns else 'E-mail'
                         
-                        # Força o tipo string para não dar erro com NaN
                         df_users_login[col_email] = df_users_login[col_email].astype(str)
                         
                         mask_login = df_users_login[col_email].str.strip().str.lower() == email_limpo
@@ -297,8 +296,12 @@ if not st.session_state.logged_in:
                         df_users_update = ler_csv_via_api_github("dados_usuarios.csv")
                         col_email_up = 'E-MAIL' if 'E-MAIL' in df_users_update.columns else 'E-mail'
                         
-                        # Força o formato de string para evitar o erro de IndexError (Tamanho 0)
+                        # --- CORREÇÃO DE SEGURANÇA: FORCE STRING PARA EVITAR ERRO DE FLOAT64 ---
                         df_users_update[col_email_up] = df_users_update[col_email_up].astype(str)
+                        if 'SENHA' not in df_users_update.columns:
+                            df_users_update['SENHA'] = ""
+                        df_users_update['SENHA'] = df_users_update['SENHA'].astype(str)
+                        
                         mask = df_users_update[col_email_up].str.strip().str.lower() == email_novo_limpo
                         
                         if mask.any():
@@ -717,7 +720,6 @@ else:
             df_users_login = ler_csv_via_api_github("dados_usuarios.csv")
             if 'E-MAIL' in df_users_login.columns: df_users_login.rename(columns={'E-MAIL': 'E-mail'}, inplace=True)
             
-            # Força o tipo para String para evitar bug do NaN
             df_users_login['E-mail'] = df_users_login['E-mail'].astype(str)
             
             mask_user = df_users_login['E-mail'].str.strip().str.lower() == st.session_state.user_email.strip().lower()
@@ -852,7 +854,12 @@ else:
                             df_users_update = ler_csv_via_api_github("dados_usuarios.csv")
                             col_email_up = 'E-MAIL' if 'E-MAIL' in df_users_update.columns else 'E-mail'
                             
+                            # --- CORREÇÃO DE SEGURANÇA AQUI TAMBÉM ---
                             df_users_update[col_email_up] = df_users_update[col_email_up].astype(str)
+                            if 'SENHA' not in df_users_update.columns:
+                                df_users_update['SENHA'] = ""
+                            df_users_update['SENHA'] = df_users_update['SENHA'].astype(str)
+                            
                             mask = df_users_update[col_email_up].str.strip().str.lower() == st.session_state.user_email.strip().lower()
                             
                             if mask.any():
