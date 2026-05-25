@@ -296,7 +296,6 @@ if not st.session_state.logged_in:
                         df_users_update = ler_csv_via_api_github("dados_usuarios.csv")
                         col_email_up = 'E-MAIL' if 'E-MAIL' in df_users_update.columns else 'E-mail'
                         
-                        # --- CORREÇÃO DE SEGURANÇA: FORCE STRING PARA EVITAR ERRO DE FLOAT64 ---
                         df_users_update[col_email_up] = df_users_update[col_email_up].astype(str)
                         if 'SENHA' not in df_users_update.columns:
                             df_users_update['SENHA'] = ""
@@ -350,15 +349,17 @@ else:
     # VISÃO DO GESTOR
     # ==========================================
     if st.session_state.perfil == "Gestor":
-        aba_dashboard, aba_upload, aba_equipe, aba_ferias = st.tabs([
+        # ABA DE PONTO ADICIONADA AQUI
+        aba_dashboard, aba_upload, aba_equipe, aba_ferias, aba_ponto = st.tabs([
             "📊 Dashboard de Indicadores", 
             "⚙️ Consolidação (Mensal)", 
-            "👥 Gestão da Equipe",
-            "🌴 Calendário de Férias"
+            "👥 Gestão da Equipa",
+            "🌴 Calendário de Férias",
+            "⏰ Banco de Horas"
         ])
         
         with aba_equipe:
-            st.header("👥 Cadastro Unificado de Equipe (Mestre)")
+            st.header("👥 Cadastro Unificado de Equipa (Mestre)")
             st.info("💡 **Dica:** Esta é a sua Fonte Única de Verdades. O status e o mês de férias inseridos aqui serão lidos automaticamente por todo o Dashboard.")
             try:
                 df_users_atual = ler_csv_via_api_github("dados_usuarios.csv")
@@ -380,7 +381,7 @@ else:
                 if st.button("💾 Guardar Base Mestre de Utilizadores", type="primary"):
                     enviar_para_github("dados_usuarios.csv", df_users_editado.to_csv(index=False))
                     st.cache_data.clear()
-                    st.success("Equipe guardada com sucesso!")
+                    st.success("Equipa guardada com sucesso!")
                     time.sleep(0.5)
                     st.rerun()
             except Exception: 
@@ -434,6 +435,89 @@ else:
                     st.rerun()
             except Exception:
                 st.warning("Base de utilizadores indisponível.")
+
+        # --- NOVA ABA: BANCO DE HORAS ---
+        with aba_ponto:
+            st.header("⏰ Verificação de Banco de Horas")
+            st.markdown("Faça o upload do relatório de **Saldo de Horas** extraído do sistema para analisar os saldos da equipa.")
+            
+            arquivo_ponto = st.file_uploader("Arraste e solte o ficheiro de Saldo de Horas aqui (CSV ou Excel)", type=["csv", "xlsx"])
+            
+            if arquivo_ponto:
+                try:
+                    # O arquivo padrão tem um cabeçalho inútil nas 4 primeiras linhas. O skiprows=4 pula direto para os dados.
+                    if arquivo_ponto.name.endswith('.csv'):
+                        df_ponto = pd.read_csv(arquivo_ponto, skiprows=4, sep=None, engine='python')
+                    else:
+                        df_ponto = pd.read_excel(arquivo_ponto, skiprows=4)
+                    
+                    if 'Nome' in df_ponto.columns and 'Total Banco' in df_ponto.columns:
+                        
+                        # Função inteligente para calcular se o saldo é positivo ou negativo em minutos
+                        def calcular_minutos_ponto(val):
+                            if pd.isna(val): return 0
+                            val_str = str(val).strip()
+                            if not val_str or val_str == '00:00': return 0
+                            
+                            multiplicador = -1 if '-' in val_str else 1
+                            val_limpo = val_str.replace('+', '').replace('-', '')
+                            try:
+                                partes = val_limpo.split(':')
+                                hh = int(partes[0])
+                                mm = int(partes[1]) if len(partes) > 1 else 0
+                                return (hh * 60 + mm) * multiplicador
+                            except:
+                                return 0
+                        
+                        df_ponto['Minutos Saldo'] = df_ponto['Total Banco'].apply(calcular_minutos_ponto)
+                        df_ponto['Status Saldo'] = df_ponto['Minutos Saldo'].apply(
+                            lambda x: 'Negativo' if x < 0 else ('Positivo' if x > 0 else 'Zerado')
+                        )
+                        
+                        tot_neg = len(df_ponto[df_ponto['Status Saldo'] == 'Negativo'])
+                        tot_pos = len(df_ponto[df_ponto['Status Saldo'] == 'Positivo'])
+                        tot_zer = len(df_ponto[df_ponto['Status Saldo'] == 'Zerado'])
+                        
+                        c1, c2, c3 = st.columns(3)
+                        with c1: st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>Saldos Negativos</div><div class='kpi-value' style='color:#dc3545;'>{tot_neg}</div></div>", unsafe_allow_html=True)
+                        with c2: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Saldos Positivos</div><div class='kpi-value' style='color:#28a745;'>{tot_pos}</div></div>", unsafe_allow_html=True)
+                        with c3: st.markdown(f"<div class='kpi-card' style='border-left-color: #6c757d;'><div class='kpi-title'>Saldos Zerados</div><div class='kpi-value' style='color:#6c757d;'>{tot_zer}</div></div>", unsafe_allow_html=True)
+                        
+                        st.markdown("---")
+                        c_graf1, c_graf2 = st.columns(2)
+                        
+                        with c_graf1:
+                            df_negativos = df_ponto[df_ponto['Minutos Saldo'] < 0].sort_values('Minutos Saldo', ascending=True).head(15)
+                            if not df_negativos.empty:
+                                fig_neg = px.bar(df_negativos, x='Minutos Saldo', y='Nome', orientation='h', title="🚨 Maiores Saldos Negativos", text='Total Banco', color_discrete_sequence=['#dc3545'])
+                                fig_neg.update_yaxes(autorange="reversed")
+                                st.plotly_chart(fig_neg, use_container_width=True)
+                            else:
+                                st.success("Nenhum saldo negativo na equipa!")
+                                
+                        with c_graf2:
+                            df_positivos = df_ponto[df_ponto['Minutos Saldo'] > 0].sort_values('Minutos Saldo', ascending=False).head(15)
+                            if not df_positivos.empty:
+                                fig_pos = px.bar(df_positivos, x='Minutos Saldo', y='Nome', orientation='h', title="📈 Maiores Saldos Positivos", text='Total Banco', color_discrete_sequence=['#28a745'])
+                                fig_pos.update_yaxes(autorange="reversed")
+                                st.plotly_chart(fig_pos, use_container_width=True)
+                            else:
+                                st.info("Nenhum saldo positivo na equipa.")
+                                
+                        st.subheader("📋 Detalhamento Completo de Banco de Horas")
+                        
+                        def formatar_cores_ponto(row):
+                            if row['Status Saldo'] == 'Negativo': return ['background-color: #fff5f5; color: #dc3545;'] * len(row)
+                            elif row['Status Saldo'] == 'Positivo': return ['background-color: #f6ffed; color: #28a745;'] * len(row)
+                            return ['color: #6c757d;'] * len(row)
+                            
+                        colunas_visiveis = ['Nome', 'Cargo', 'Saldo Anterior', 'Saldo do Período', 'Total Banco', 'Status Saldo']
+                        st.dataframe(df_ponto[colunas_visiveis].style.apply(formatar_cores_ponto, axis=1), use_container_width=True)
+                        
+                    else:
+                        st.error("O ficheiro carregado não tem as colunas corretas ('Nome' e 'Total Banco'). Verifique se é a extração correta.")
+                except Exception as e:
+                    st.error(f"Ocorreu um erro na leitura do ficheiro de ponto: {e}")
 
         with aba_upload:
             st.header("⚙️ Central de Consolidação de Relatórios")
@@ -741,7 +825,6 @@ else:
             with aba_desempenho:
                 st.markdown(f"<p style='color: #6c757d; font-size: 16px;'>Acompanhe o seu desempenho e metas referentes a <b>{mes_view} de {ano_view}</b>.</p>", unsafe_allow_html=True)
                 
-                # --- BLOCO 1: INFORMAÇÕES PESSOAIS ---
                 st.markdown("### 📋 Informações Cadastrais")
                 c_info1, c_info2, c_info3 = st.columns(3)
                 
@@ -770,7 +853,6 @@ else:
                     my_tx_ret = dados['Taxa_Retencao_Original'] if 'Taxa_Retencao_Original' in dados else 0.0
                     my_tx_canc = 100 - my_tx_ret if my_tx_ret > 0 else 0.0
                     
-                    # --- MOTOR DE RANKING DE RETENÇÃO (GAMIFICAÇÃO) ---
                     df_ranking = df_periodo.copy()
                     rank_display = "N/A"
                     cor_rank = "#6c757d"
@@ -788,24 +870,23 @@ else:
                             
                             if user_rank == 1:
                                 rank_display = f"🥇 <b>Parabéns!</b> Você é o líder absoluto de Retenção entre {total_agents} operadores!"
-                                cor_rank = "#ffc107" # Ouro
+                                cor_rank = "#ffc107" 
                             elif user_rank <= 3:
                                 rank_display = f"🥈 <b>Top {user_rank}!</b> Você é um dos melhores de um grupo de {total_agents} operadores!"
-                                cor_rank = "#17a2b8" # Azul destaque
+                                cor_rank = "#17a2b8" 
                             else:
                                 rank_display = f"🏆 <b>{user_rank}º Lugar</b> de {total_agents} operadores. <i>(O 1º lugar está com {top_retencao:.2f}%)</i>"
-                                cor_rank = "#007bff" # Azul padrão
+                                cor_rank = "#007bff" 
                         else:
                             rank_display = "Dados insuficientes para gerar o seu ranking neste mês."
                             
                     st.markdown(f"""
                         <div style='background-color: #ffffff; border: 1px solid #e9ecef; border-left: 5px solid {cor_rank}; padding: 15px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0px 2px 5px rgba(0,0,0,0.02);'>
-                            <h4 style='margin: 0; color: #6c757d; font-size: 13px; text-transform: uppercase;'>O Seu Ranking na Equipe (Retenção)</h4>
+                            <h4 style='margin: 0; color: #6c757d; font-size: 13px; text-transform: uppercase;'>O Seu Ranking na Equipa (Retenção)</h4>
                             <p style='margin: 5px 0 0 0; color: #343a40; font-size: 18px;'>{rank_display}</p>
                         </div>
                     """, unsafe_allow_html=True)
                     
-                    # --- BLOCO 2: QUALIDADE ---
                     st.markdown("### ⭐ Qualidade e Processos")
                     ca1, ca2, ca3, ca4 = st.columns(4)
                     with ca1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>O Meu CSAT</div><div class='kpi-value'>{my_csat:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
@@ -813,7 +894,6 @@ else:
                     with ca3: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>Conformidade (Escala)</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
                     with ca4: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>Aderência (Pausas)</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
 
-                    # --- BLOCO 3: PRODUTIVIDADE ---
                     st.markdown("### 🎧 Produtividade e Retenção")
                     co1, co2, co3, co4 = st.columns(4)
                     with co1: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Chats Atendidos</div><div class='kpi-value'>{int(dados['Vol. Chat']) if pd.notna(dados['Vol. Chat']) else 0}</div></div>", unsafe_allow_html=True)
@@ -823,7 +903,6 @@ else:
                 else:
                     st.info(f"Ainda não existem dados operacionais associados ao seu perfil para as folhas de {mes_view}.")
 
-            # --- ABA EXCLUSIVA PARA FÉRIAS ---
             with aba_ferias:
                 st.markdown("### 🌴 Planeamento Anual de Férias")
                 if mes_ferias_cadastrado == "Não programadas":
@@ -837,7 +916,6 @@ else:
                         </div>
                     """, unsafe_allow_html=True)
 
-            # --- ABA EXCLUSIVA PARA CONTA E SEGURANÇA ---
             with aba_conta:
                 st.markdown("### ⚙️ Configurações de Segurança")
                 st.markdown("Para sua segurança, escolha uma palavra-passe forte, com letras e números, e não a partilhe com terceiros.")
@@ -854,7 +932,6 @@ else:
                             df_users_update = ler_csv_via_api_github("dados_usuarios.csv")
                             col_email_up = 'E-MAIL' if 'E-MAIL' in df_users_update.columns else 'E-mail'
                             
-                            # --- CORREÇÃO DE SEGURANÇA AQUI TAMBÉM ---
                             df_users_update[col_email_up] = df_users_update[col_email_up].astype(str)
                             if 'SENHA' not in df_users_update.columns:
                                 df_users_update['SENHA'] = ""
