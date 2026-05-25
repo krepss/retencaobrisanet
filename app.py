@@ -6,6 +6,7 @@ import io
 import time
 import base64
 import json
+from datetime import datetime
 
 # ==========================================
 # CONFIGURAÇÕES GERAIS E PARÂMETROS DE METAS
@@ -68,11 +69,20 @@ st.markdown("""
             margin-bottom: 15px;
             font-weight: bold;
         }
+        .info-card {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 6px;
+            color: #495057;
+            margin-bottom: 15px;
+            text-align: center;
+        }
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# GESTÃO DE SESSÃO COM PERSISTÊNCIA (SOBREVIVE AO F5)
+# GESTÃO DE SESSÃO COM PERSISTÊNCIA (URL SAFE)
 # ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -81,17 +91,16 @@ if "logged_in" not in st.session_state:
     st.session_state.user_nome = ""
 
 def salvar_sessao(email, perfil, nome):
-    """Gera um token criptografado na URL para o navegador lembrar quem está logado."""
     dados = {"email": email, "perfil": perfil, "nome": nome}
-    token = base64.b64encode(json.dumps(dados).encode('utf-8')).decode('utf-8')
+    token = base64.urlsafe_b64encode(json.dumps(dados).encode('utf-8')).decode('utf-8')
     st.query_params["session"] = token
 
 def restaurar_sessao():
-    """Lê a URL no momento do F5 e puxa a pessoa de volta pro painel."""
     if "session" in st.query_params:
         try:
             token = st.query_params["session"]
-            dados = json.loads(base64.b64decode(token.encode('utf-8')).decode('utf-8'))
+            token += "=" * ((4 - len(token) % 4) % 4)
+            dados = json.loads(base64.urlsafe_b64decode(token.encode('utf-8')).decode('utf-8'))
             st.session_state.logged_in = True
             st.session_state.user_email = dados.get("email", "")
             st.session_state.perfil = dados.get("perfil", "")
@@ -100,7 +109,6 @@ def restaurar_sessao():
             pass
 
 def fazer_logout():
-    """Limpa a memória do sistema e limpa a URL do navegador."""
     st.session_state.logged_in = False
     st.session_state.perfil = ""
     st.session_state.user_email = ""
@@ -108,12 +116,11 @@ def fazer_logout():
     st.query_params.clear()
     st.cache_data.clear() 
 
-# Tenta restaurar a sessão instantaneamente antes de desenhar a tela
 if not st.session_state.logged_in:
     restaurar_sessao()
 
 # ==========================================
-# FUNÇÕES DE LEITURA E GRAVAÇÃO VIA API GITHUB
+# FUNÇÕES DE LEITURA E GRAVAÇÃO VIA API GITHUB E UTILITÁRIAS
 # ==========================================
 def ler_csv_via_api_github(nome_arquivo):
     g = Github(st.secrets["GITHUB_TOKEN"])
@@ -152,6 +159,24 @@ def ms_para_minutos(ms):
     if pd.isna(ms): return 0.0
     return ms / 1000 / 60
 
+def calcular_tempo_empresa(data_str):
+    if pd.isna(data_str) or str(data_str).strip() == "": return "Não informada"
+    try:
+        # Tenta interpretar a data (DD/MM/YYYY)
+        data_admissao = datetime.strptime(str(data_str).strip(), "%d/%m/%Y")
+        hoje = datetime.now()
+        dias = (hoje - data_admissao).days
+        if dias < 0: return "Inicia no futuro"
+        anos = dias // 365
+        meses = (dias % 365) // 30
+        
+        if anos > 0 and meses > 0: return f"{anos} ano(s) e {meses} mês(es)"
+        elif anos > 0: return f"{anos} ano(s)"
+        elif meses > 0: return f"{meses} mês(es)"
+        else: return f"{dias} dia(s)"
+    except Exception:
+        return "Formato inválido"
+
 @st.cache_data(ttl=5)
 def carregar_dados_mestre_seguro():
     df = ler_csv_via_api_github("dados_consolidados_master.csv")
@@ -174,29 +199,42 @@ if not st.session_state.logged_in:
         if submit_login:
             email_limpo = email_input.strip().lower()
             senha_limpa = senha_input.strip()
+            
             if email_limpo == GESTOR_EMAIL.lower() and senha_limpa == GESTOR_SENHA:
                 st.session_state.logged_in = True
                 st.session_state.perfil = "Gestor"
                 st.session_state.user_nome = "Gestor"
                 salvar_sessao(email_limpo, "Gestor", "Gestor")
-                st.success("Login efetuado com sucesso!")
+                st.success("Login efetuado!")
                 time.sleep(0.5)
                 st.rerun() 
             else:
                 try:
                     df_users_login = ler_csv_via_api_github("dados_usuarios.csv")
-                    if email_limpo in df_users_login['E-mail'].dropna().str.strip().str.lower().tolist():
+                    # Padroniza nomes de colunas conforme o seu CSV modelo
+                    if 'E-MAIL' in df_users_login.columns:
+                        df_users_login.rename(columns={'E-MAIL': 'E-mail'}, inplace=True)
+                    
+                    lista_emails = df_users_login['E-mail'].dropna().str.strip().str.lower().tolist()
+                    if email_limpo in lista_emails:
                         dados_usr = df_users_login[df_users_login['E-mail'].str.strip().str.lower() == email_limpo].iloc[0]
-                        st.session_state.logged_in = True
-                        st.session_state.perfil = "Agente"
-                        st.session_state.user_email = email_limpo
-                        st.session_state.user_nome = str(dados_usr['Nome']).title()
-                        salvar_sessao(email_limpo, "Agente", st.session_state.user_nome)
-                        st.success("Login efetuado com sucesso!")
-                        time.sleep(0.5)
-                        st.rerun()
-                    else: st.error("❌ E-mail ou senha incorreta.")
-                except Exception: st.error("❌ Banco de dados de usuários não inicializado.")
+                        # Validação de senha customizada ou padrão (1234)
+                        senha_correta = str(dados_usr.get('SENHA', '')).strip()
+                        if senha_correta == "" or senha_correta.lower() == "nan": senha_correta = SENHA_PADRAO_AGENTE
+                        
+                        if senha_limpa == senha_correta:
+                            st.session_state.logged_in = True
+                            st.session_state.perfil = "Agente"
+                            st.session_state.user_email = email_limpo
+                            st.session_state.user_nome = str(dados_usr['COLABORADOR']).title()
+                            salvar_sessao(email_limpo, "Agente", st.session_state.user_nome)
+                            st.success("Login efetuado!")
+                            time.sleep(0.5)
+                            st.rerun()
+                        else:
+                            st.error("❌ E-mail ou senha incorreta.")
+                    else: st.error("❌ E-mail não encontrado na base de dados.")
+                except Exception: st.error("❌ Banco de dados de usuários não localizado.")
 
 # ==========================================
 # SISTEMA LOGADO
@@ -232,67 +270,51 @@ else:
     if st.session_state.perfil == "Gestor":
         aba_dashboard, aba_upload, aba_equipe = st.tabs(["📊 Dashboard de Indicadores", "⚙️ Consolidação (Mensal)", "👥 Gestão da Equipe"])
         
-        # ABA GESTÃO DA EQUIPE
+        # ABA GESTÃO DA EQUIPE (UNIFICADA)
         with aba_equipe:
-            st.header("👥 Gestão de Cadastros e Escala de Férias")
-            c_eq1, c_eq2 = st.columns([3, 2])
-            with c_eq1:
-                st.subheader("Ficha de Cadastro de Usuários")
-                try:
-                    df_users_atual = ler_csv_via_api_github("dados_usuarios.csv")
-                    if 'Status' in df_users_atual.columns: df_users_atual.drop(columns=['Status', 'Inicio Ferias', 'Fim Ferias'], errors='ignore', inplace=True)
-                    df_users_editado = st.data_editor(df_users_atual, num_rows="dynamic", use_container_width=True, key="ed_usr")
-                    if st.button("💾 Salvar Usuários"):
-                        enviar_para_github("dados_usuarios.csv", df_users_editado.to_csv(index=False))
-                        st.cache_data.clear()
-                        st.success("Salvo!")
-                except Exception: st.warning("Arquivo de usuários indisponível.")
+            st.header("👥 Cadastro Unificado de Equipe (Mestre)")
+            st.info("💡 **Dica:** Esta é a sua Fonte Única de Verdades. O status e o mês de férias inseridos aqui serão lidos automaticamente por todo o Dashboard.")
+            try:
+                df_users_atual = ler_csv_via_api_github("dados_usuarios.csv")
                 
-            with c_eq2:
-                st.subheader("📅 Cronograma de Férias por Mês/Ano")
-                st.info("Adicione o nome do operador e informe em qual Mês e Ano ele estará afastado.")
-                try:
-                    df_ferias_cron = ler_csv_via_api_github("escala_ferias.csv")
-                except Exception:
-                    df_ferias_cron = pd.DataFrame(columns=["Operador", "Mês Férias", "Ano Férias"])
-                
-                df_ferias_editado = st.data_editor(df_ferias_cron, num_rows="dynamic", use_container_width=True, key="ed_fer")
-                if st.button("💾 Salvar Escala de Férias no GitHub", type="primary"):
-                    enviar_para_github("escala_ferias.csv", df_ferias_editado.to_csv(index=False))
+                # Assegura que o arquivo contenha as colunas essenciais se for a primeira vez
+                colunas_esperadas = ['COLABORADOR', 'E-MAIL', 'FÉRIAS 2026', 'STATUS', 'SENHA', 'ADMISSÃO']
+                for col in colunas_esperadas:
+                    if col not in df_users_atual.columns:
+                        if col == 'E-MAIL' and 'E-mail' in df_users_atual.columns: df_users_atual.rename(columns={'E-mail': 'E-MAIL'}, inplace=True)
+                        else: df_users_atual[col] = ""
+
+                df_users_editado = st.data_editor(df_users_atual, num_rows="dynamic", use_container_width=True, key="ed_usr")
+                if st.button("💾 Salvar Base Mestre de Usuários", type="primary"):
+                    enviar_para_github("dados_usuarios.csv", df_users_editado.to_csv(index=False))
                     st.cache_data.clear()
-                    st.success("Escala de férias salva com sucesso!")
+                    st.success("Equipe salva com sucesso!")
                     time.sleep(0.5)
+                    st.rerun()
+            except Exception: 
+                st.warning("Faça o upload do seu CSV de usuários para começar.")
+                up_arq = st.file_uploader("Upload Arquivo de Usuários", type=['csv'])
+                if up_arq and st.button("Criar"):
+                    enviar_para_github("dados_usuarios.csv", up_arq)
                     st.rerun()
 
         # ABA UPLOAD
         with aba_upload:
             st.header("⚙️ Central de Consolidação de Relatórios")
             arquivos_carregados = st.file_uploader("Arraste e solte os 5 arquivos CSV aqui de uma vez", type=["csv"], accept_multiple_files=True)
-            
-            relatorios_identificados = {
-                "Aderência e Conformidade": None, 
-                "Pesquisa (CSAT/IR)": None, 
-                "Chat": None, 
-                "Voz": None, 
-                "Retenção": None
-            }
-            
+            relatorios_identificados = {"Aderência e Conformidade": None, "Pesquisa (CSAT/IR)": None, "Chat": None, "Voz": None, "Retenção": None}
             if arquivos_carregados:
                 for arquivo in arquivos_carregados:
                     try:
                         df_header = pd.read_csv(arquivo, nrows=0)
                         cols = [c.strip() for c in df_header.columns]
                         arquivo.seek(0)
-                        
-                        if 'Aderência (%)' in cols and 'Conformidade (%)' in cols and 'Agente' in cols: 
-                            relatorios_identificados["Aderência e Conformidade"] = arquivo
-                        elif 'CSAT' in cols and 'Atendente' in cols: 
-                            relatorios_identificados["Pesquisa (CSAT/IR)"] = arquivo
+                        if 'Aderência (%)' in cols and 'Conformidade (%)' in cols and 'Agente' in cols: relatorios_identificados["Aderência e Conformidade"] = arquivo
+                        elif 'CSAT' in cols and 'Atendente' in cols: relatorios_identificados["Pesquisa (CSAT/IR)"] = arquivo
                         elif 'Nome do agente' in cols and 'Atendidas' in cols:
                             if "chat" in arquivo.name.lower(): relatorios_identificados["Chat"] = arquivo
                             else: relatorios_identificados["Voz"] = arquivo
-                        elif 'responsavel' in cols and '% de retenção' in cols: 
-                            relatorios_identificados["Retenção"] = arquivo
+                        elif 'responsavel' in cols and '% de retenção' in cols: relatorios_identificados["Retenção"] = arquivo
                     except Exception: pass
 
             st.markdown("### 📋 Status da Validação")
@@ -316,7 +338,9 @@ else:
                         df_perf['Aderência (%)'] = df_perf['Aderência (%)'].apply(limpar_porcentagem)
                         df_perf['Conformidade (%)'] = df_perf['Conformidade (%)'].apply(limpar_porcentagem)
                         df_perf['Chave_Nome'] = df_perf['Agente'].astype(str).str.strip().str.upper()
-                        df_users['Chave_Nome'] = df_users['Nome'].astype(str).str.strip().str.upper()
+                        
+                        # Usa a coluna COLABORADOR do seu arquivo mestre unificado
+                        df_users['Chave_Nome'] = df_users['COLABORADOR'].astype(str).str.strip().str.upper()
                         
                         df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
                         df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
@@ -358,19 +382,24 @@ else:
             if not base_mestre_existe: st.warning("📢 Base mestre indisponível.")
             elif not dados_carregados: st.warning(f"⚠️ {erro_dados}")
             else:
-                try:
-                    df_escala_ferias = ler_csv_via_api_github("escala_ferias.csv")
-                    df_escala_ferias['Operador_Chave'] = df_escala_ferias['Operador'].astype(str).str.strip().str.upper()
-                    df_escala_ferias['Mês_Chave'] = df_escala_ferias['Mês Férias'].astype(str).str.strip().str.lower()
-                    df_escala_ferias['Ano_Chave'] = df_escala_ferias['Ano Férias'].astype(str).str.strip()
-                    lista_nomes_ferias = df_escala_ferias[(df_escala_ferias['Mês_Chave'] == mes_view.lower()) & (df_escala_ferias['Ano_Chave'] == str(ano_view))]['Operador_Chave'].tolist()
-                except Exception:
-                    lista_nomes_ferias = []
-
+                # 🚀 LÓGICA DE FÉRIAS INTELIGENTE UNIFICADA
                 df_periodo_mapeado = df_periodo.copy()
-                df_periodo_mapeado['Status_Dinamico'] = df_periodo_mapeado['Chave_Nome'].apply(lambda x: 'Férias' if x in lista_nomes_ferias else 'Ativo')
+                
+                def identificar_status_unificado(row):
+                    # Se o status já for Afastado direto na planilha, marca como afastado
+                    if str(row.get('STATUS', 'ATIVO')).strip().upper() == 'AFASTADO':
+                        return 'Afastado'
+                    
+                    # Verifica se o Mês selecionado no painel é o mesmo mês cadastrado na coluna de Férias do usuário
+                    mes_ferias = str(row.get('FÉRIAS 2026', '')).strip().upper()
+                    if mes_ferias == mes_view.upper():
+                        return 'Férias'
+                    
+                    return 'Ativo'
+                
+                df_periodo_mapeado['Status_Dinamico'] = df_periodo_mapeado.apply(identificar_status_unificado, axis=1)
 
-                modo_visao = st.radio("Filtro de Quadro Operacional:", ["Mostrar Apenas Ativos", "Mostrar Todos (Incluir Férias do Período)"], horizontal=True)
+                modo_visao = st.radio("Filtro de Quadro Operacional:", ["Mostrar Apenas Ativos", "Mostrar Todos (Incluir Férias/Afastados do Período)"], horizontal=True)
                 
                 if modo_visao == "Mostrar Apenas Ativos": df_calculado = df_periodo_mapeado[df_periodo_mapeado['Status_Dinamico'] == 'Ativo'].copy()
                 else: df_calculado = df_periodo_mapeado.copy()
@@ -384,6 +413,13 @@ else:
                 
                 df_calculado['% Retenção'] = df_calculado['Taxa_Retencao_Original'].fillna(0) if 'Taxa_Retencao_Original' in df_calculado.columns else 0.0
                 df_calculado['% Cancelamento'] = df_calculado.apply(lambda r: 100 - r['% Retenção'] if r['% Retenção'] > 0 else 0.0, axis=1)
+
+                df_calculado = df_calculado[
+                    (df_calculado['Aderência (%)'] > 0) | 
+                    (df_calculado['Conformidade (%)'] > 0) | 
+                    (df_calculado['Vol. Chat'] > 0) | 
+                    (df_calculado['Vol. Voz'] > 0)
+                ].copy()
 
                 st.subheader(f"🚨 Auditoria de Desvios de Metas Contratuais ({mes_view}/{ano_view})")
                 df_ativos_alertas = df_calculado[df_calculado['Status_Dinamico'] == 'Ativo']
@@ -416,7 +452,6 @@ else:
                 filtro_agente = st.selectbox("Selecionar foco nominal:", agentes_lista)
                 df_final_escopo = df_calculado[df_calculado['Nome Exibição'] == filtro_agente] if filtro_agente != "Todos" else df_calculado.copy()
 
-                # CÁLCULOS DOS CARDS GERAIS
                 if 'Total_Pesq_CSAT' in df_final_escopo.columns:
                     tot_csat = df_final_escopo['Total_Pesq_CSAT'].sum()
                     boas_csat = df_final_escopo['Boas_Pesq_CSAT'].sum()
@@ -527,7 +562,6 @@ else:
                             st.plotly_chart(fig_volvz, use_container_width=True)
                     st.markdown("---")
 
-                # TABELA NOMINAL REFORMULADA
                 st.subheader("👥 Detalhamento Operacional por Colaborador")
                 colunas_tabela = ['Nome Exibição', 'Status_Dinamico', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Conformidade (%)', 'Aderência (%)', 'Vol. Chat', 'TMA Chat (Min)', 'Vol. Voz', 'TMA Voz (Min)', 'RT geral valido', '% Retenção', '% Cancelamento']
                 colunas_tabela = list(dict.fromkeys(colunas_tabela))
@@ -549,22 +583,34 @@ else:
         if not base_mestre_existe: st.error("⚠️ Configurando o sistema.")
         elif not dados_carregados: st.warning(f"⚠️ {erro_dados}")
         else:
-            st.title(f"👤 Meu Painel de Metas ({mes_view}/{ano_view})")
-            try:
-                df_ferias_check = ler_csv_via_api_github("escala_ferias.csv")
-                meu_afastamento = df_ferias_check[
-                    (df_ferias_check['Operador'].astype(str).str.strip().str.upper() == st.session_state.user_nome.upper()) &
-                    (df_ferias_check['Mês Férias'].astype(str).str.strip().str.lower() == mes_view.lower()) &
-                    (df_ferias_check['Ano Férias'].astype(str).str.strip() == str(ano_view))
-                ]
-                tem_ferias_mes = not meu_afastamento.empty
-            except Exception: tem_ferias_mes = False
+            st.title(f"👤 Meu Painel de Controle Operacional ({mes_view}/{ano_view})")
             
-            if tem_ferias_mes:
-                st.markdown(f"<div class='ferias-card'>📅 STATUS: VOCÊ TEM FÉRIAS PROGRAMADAS PARA ESTE MÊS DE {mes_view.upper()}!</div>", unsafe_allow_html=True)
-            else:
-                st.markdown(f"<div class='ferias-card' style='background-color:#f8f9fa;border-color:#ced4da;color:#495057;'>📅 Status: Ativo em {mes_view}/{ano_view} (Nenhuma programação de férias para este período).</div>", unsafe_allow_html=True)
+            # --- LEITURA DO ARQUIVO MESTRE E CÁLCULO DE TEMPO DE EMPRESA ---
+            df_users_login = ler_csv_via_api_github("dados_usuarios.csv")
+            if 'E-MAIL' in df_users_login.columns: df_users_login.rename(columns={'E-MAIL': 'E-mail'}, inplace=True)
+            
+            meus_dados_cadastrais = df_users_login[df_users_login['E-mail'].str.strip().str.lower() == st.session_state.user_email.strip().lower()].iloc[0]
+            
+            mes_ferias = str(meus_dados_cadastrais.get('FÉRIAS 2026', '')).strip().upper()
+            data_admissao = str(meus_dados_cadastrais.get('ADMISSÃO', '')).strip()
+            tempo_empresa = calcular_tempo_empresa(data_admissao)
+            
+            # --- ÁREA DE INFORMAÇÕES PESSOAIS (TEMPO DE EMPRESA) ---
+            c_info1, c_info2 = st.columns(2)
+            with c_info1:
+                st.markdown(f"<div class='info-card'>📅 <b>Data de Admissão:</b> {data_admissao if data_admissao != 'nan' else 'Não cadastrada'}</div>", unsafe_allow_html=True)
+            with c_info2:
+                st.markdown(f"<div class='info-card'>🏢 <b>Tempo de Empresa:</b> {tempo_empresa}</div>", unsafe_allow_html=True)
 
+            # --- STATUS DE FÉRIAS INTELIGENTE ---
+            if mes_ferias == mes_view.upper():
+                st.markdown(f"<div class='ferias-card'>🌴 STATUS: VOCÊ TEM FÉRIAS PROGRAMADAS PARA ESTE MÊS ({mes_view.upper()})!</div>", unsafe_allow_html=True)
+            elif str(meus_dados_cadastrais.get('STATUS', '')).strip().upper() == 'AFASTADO':
+                st.markdown(f"<div class='ferias-card' style='background-color:#fff5f5;border-color:#e53e3e;color:#742a2a;'>🩺 Status: Você consta como AFASTADO no sistema.</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div class='ferias-card' style='background-color:#f8f9fa;border-color:#ced4da;color:#495057;'>✅ Status: Ativo em {mes_view}/{ano_view} (Nenhuma folga/férias atrelada a este período).</div>", unsafe_allow_html=True)
+
+            # --- PAINEL DE DESEMPENHO OPERACIONAL ---
             meus_dados = df_periodo[df_periodo['E-mail'] == st.session_state.user_email]
             if not meus_dados.empty:
                 dados = meus_dados.iloc[0]
@@ -588,4 +634,30 @@ else:
                 with co3: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
                 with co4: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_RETENCAO:.0f}% | Cancelamento: {my_tx_canc:.1f}%</div></div>", unsafe_allow_html=True)
             else:
-                st.info("Nenhum dado operacional associado ao seu perfil.")
+                st.info("Nenhum dado operacional associado ao seu perfil para este mês.")
+
+            st.markdown("---")
+            
+            # --- MÓDULO DE AUTONOMIA: TROCA DE SENHA ---
+            st.subheader("🔐 Gestão de Segurança")
+            with st.expander("Clique aqui para alterar sua senha de acesso"):
+                with st.form("form_senha"):
+                    st.info("Para sua segurança, escolha uma senha forte e não a compartilhe.")
+                    nova_senha = st.text_input("Digite a sua nova senha", type="password")
+                    confirmar_senha = st.text_input("Confirme a nova senha", type="password")
+                    if st.form_submit_button("Salvar Nova Senha"):
+                        if nova_senha != confirmar_senha:
+                            st.error("As senhas não coincidem. Tente novamente.")
+                        elif len(nova_senha) < 4:
+                            st.error("A senha deve ter pelo menos 4 caracteres.")
+                        else:
+                            df_users_update = ler_csv_via_api_github("dados_usuarios.csv")
+                            if 'E-MAIL' in df_users_update.columns: df_users_update.rename(columns={'E-MAIL': 'E-mail'}, inplace=True)
+                            
+                            # Localiza o usuário logado na base mestre e aplica a nova senha
+                            mask = df_users_update['E-mail'].str.strip().str.lower() == st.session_state.user_email.strip().lower()
+                            df_users_update.loc[mask, 'SENHA'] = nova_senha
+                            
+                            enviar_para_github("dados_usuarios.csv", df_users_update.to_csv(index=False))
+                            st.cache_data.clear()
+                            st.success("✅ Senha alterada com sucesso!")
