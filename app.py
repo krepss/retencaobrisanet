@@ -127,7 +127,6 @@ def ler_csv_via_api_github(nome_arquivo):
     repo = g.get_repo(st.secrets["GITHUB_REPO"])
     arquivo_git = repo.get_contents(nome_arquivo)
     conteudo_texto = arquivo_git.decoded_content.decode('utf-8')
-    # Usando sep=None para auto-detectar vírgula ou ponto-e-vírgula em arquivos Brasileiros
     return pd.read_csv(io.StringIO(conteudo_texto), sep=None, engine='python')
 
 def enviar_para_github(nome_arquivo_git, conteudo):
@@ -148,21 +147,13 @@ def enviar_para_github(nome_arquivo_git, conteudo):
 def limpar_porcentagem(valor):
     if pd.isna(valor): return 0.0
     try:
-        # Se vier como número direto (ex: 66.32 ou 0.6632)
         val = float(valor)
         if val <= 1.0 and val > 0: return val * 100
         return val
     except ValueError:
-        # Se vier formatado como texto (ex: "66,32%" ou "0,6632")
-        valor_str = str(valor).replace('%', '').strip()
-        valor_str = valor_str.replace(',', '.')
-        if valor_str.lower() == 'nan' or valor_str == '': return 0.0
-        try:
-            val = float(valor_str)
-            if val <= 1.0 and val > 0: return val * 100
-            return val
-        except Exception:
-            return 0.0
+        valor_str = str(valor).replace('%', '').replace(',', '.')
+        if valor_str.lower() == 'nan': return 0.0
+        return float(valor_str)
 
 def ms_para_minutos(ms):
     if pd.isna(ms): return 0.0
@@ -177,6 +168,7 @@ def calcular_tempo_empresa(data_str):
         if dias < 0: return "Inicia no futuro"
         anos = dias // 365
         meses = (dias % 365) // 30
+        
         if anos > 0 and meses > 0: return f"{anos} ano(s) e {meses} mês(es)"
         elif anos > 0: return f"{anos} ano(s)"
         elif meses > 0: return f"{meses} mês(es)"
@@ -343,7 +335,6 @@ else:
             if all(relatorios_identificados.values()) and st.button("🚀 Processar e Atualizar Base Mestre AGORA", type="primary", use_container_width=True):
                 with st.spinner("Consolidando..."):
                     try:
-                        # Motor atualizado para ler arquivos brasileiros (; e ,) perfeitamente
                         df_perf = pd.read_csv(relatorios_identificados["Aderência e Conformidade"], sep=None, engine='python')
                         df_ret = pd.read_csv(relatorios_identificados["Retenção"], sep=None, engine='python')
                         df_chat = pd.read_csv(relatorios_identificados["Chat"], sep=None, engine='python')
@@ -616,7 +607,10 @@ else:
             else:
                 st.markdown(f"<div class='ferias-card' style='background-color:#f8f9fa;border-color:#ced4da;color:#495057;'>✅ Status: Ativo em {mes_view}/{ano_view} (Nenhuma folga/férias atrelada a este período).</div>", unsafe_allow_html=True)
 
-            meus_dados = df_periodo[df_periodo['E-mail'] == st.session_state.user_email]
+            # BUSCA INTELIGENTE DO E-MAIL NA BASE DO PERÍODO
+            col_email_periodo = 'E-MAIL' if 'E-MAIL' in df_periodo.columns else 'E-mail'
+            meus_dados = df_periodo[df_periodo[col_email_periodo].str.strip().str.lower() == st.session_state.user_email.strip().lower()]
+            
             if not meus_dados.empty:
                 dados = meus_dados.iloc[0]
                 tem_colunas_novas = 'Total_Pesq_CSAT' in df_periodo.columns
