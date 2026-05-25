@@ -15,7 +15,6 @@ st.set_page_config(page_title="Sistema Operacional 360", page_icon="🎯", layou
 
 GESTOR_EMAIL = "gestor"
 GESTOR_SENHA = "admin"
-SENHA_PADRAO_AGENTE = "1234" 
 
 # METAS OFICIAIS DA OPERAÇÃO BRISANET
 META_CSAT = 92.0
@@ -30,25 +29,30 @@ ANOS = ["2026", "2027", "2028", "2029", "2030"]
 st.markdown("""
     <style>
         .kpi-card {
-            background-color: #f8f9fa;
+            background-color: #ffffff;
             border-left: 5px solid #007bff;
             padding: 20px;
             border-radius: 8px;
-            box-shadow: 2px 2px 10px rgba(0,0,0,0.05);
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.05);
             text-align: center;
             margin-bottom: 15px;
+            transition: transform 0.2s;
+        }
+        .kpi-card:hover {
+            transform: translateY(-5px);
         }
         .kpi-title {
-            font-size: 14px;
+            font-size: 13px;
             color: #6c757d;
             text-transform: uppercase;
-            font-weight: bold;
+            font-weight: 700;
             margin-bottom: 8px;
+            letter-spacing: 0.5px;
         }
         .kpi-value {
             font-size: 28px;
             color: #212529;
-            font-weight: bold;
+            font-weight: 900;
         }
         .detractor-box {
             background-color: #fff5f5;
@@ -60,23 +64,27 @@ st.markdown("""
             font-size: 13px;
             line-height: 1.4;
         }
-        .ferias-card {
-            background-color: #e3f2fd;
-            border-left: 5px solid #1e88e5;
-            padding: 15px;
-            border-radius: 6px;
-            color: #0d47a1;
-            margin-bottom: 15px;
-            font-weight: bold;
-        }
         .info-card {
-            background-color: #f8f9fa;
-            border: 1px solid #dee2e6;
+            background-color: #ffffff;
+            border: 1px solid #e9ecef;
             padding: 15px;
-            border-radius: 6px;
+            border-radius: 8px;
             color: #495057;
             margin-bottom: 15px;
             text-align: center;
+            box-shadow: 0px 2px 5px rgba(0,0,0,0.02);
+        }
+        .info-title {
+            font-size: 12px;
+            color: #adb5bd;
+            text-transform: uppercase;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+        .info-data {
+            font-size: 16px;
+            color: #343a40;
+            font-weight: bold;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -184,71 +192,120 @@ def carregar_dados_mestre_seguro():
     return df
 
 # ==========================================
-# TELA DE LOGIN
+# TELA DE LOGIN APRIMORADA E INTUITIVA
 # ==========================================
 if not st.session_state.logged_in:
-    st.markdown("<h1 style='text-align: center;'>🔐 Acesso ao Sistema Operacional 360</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #007bff; margin-bottom: 0px;'>🎯 Operacional 360</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #6c757d; margin-bottom: 40px;'>Portal de Gestão de Qualidade e Performance</p>", unsafe_allow_html=True)
+    
     col_vazia1, col_login, col_vazia2 = st.columns([1, 2, 1])
+    
     with col_login:
-        with st.form("form_login"):
-            st.markdown("### Por favor, insira as suas credenciais")
-            email_input = st.text_input("E-mail corporativo")
-            senha_input = st.text_input("Senha", type="password")
-            submit_login = st.form_submit_button("Entrar", use_container_width=True)
-        if submit_login:
-            email_limpo = email_input.strip().lower()
-            senha_limpa = senha_input.strip()
+        aba_login, aba_novo = st.tabs(["🔐 Acessar Sistema", "🆕 Primeiro Acesso (Criar Senha)"])
+        
+        # --- ABA DE LOGIN NORMAL ---
+        with aba_login:
+            with st.form("form_login"):
+                st.markdown("#### Entrar")
+                email_input = st.text_input("E-mail corporativo", placeholder="seu.nome@grupobrisanet.com.br")
+                senha_input = st.text_input("Senha", type="password", placeholder="••••••••")
+                submit_login = st.form_submit_button("Acessar Painel", use_container_width=True)
             
-            if email_limpo == GESTOR_EMAIL.lower() and senha_limpa == GESTOR_SENHA:
-                st.session_state.logged_in = True
-                st.session_state.perfil = "Gestor"
-                st.session_state.user_nome = "Gestor"
-                salvar_sessao(email_limpo, "Gestor", "Gestor")
-                st.success("Login efetuado!")
-                time.sleep(0.5)
-                st.rerun() 
-            else:
-                try:
-                    df_users_login = ler_csv_via_api_github("dados_usuarios.csv")
-                    col_email = 'E-MAIL' if 'E-MAIL' in df_users_login.columns else 'E-mail'
-                    
-                    lista_emails = df_users_login[col_email].dropna().str.strip().str.lower().tolist()
-                    if email_limpo in lista_emails:
-                        dados_usr = df_users_login[df_users_login[col_email].str.strip().str.lower() == email_limpo].iloc[0]
-                        senha_correta = str(dados_usr.get('SENHA', '')).strip()
-                        if senha_correta == "" or senha_correta.lower() == "nan": senha_correta = SENHA_PADRAO_AGENTE
+            if submit_login:
+                email_limpo = email_input.strip().lower()
+                senha_limpa = senha_input.strip()
+                
+                if email_limpo == GESTOR_EMAIL.lower() and senha_limpa == GESTOR_SENHA:
+                    st.session_state.logged_in = True
+                    st.session_state.perfil = "Gestor"
+                    st.session_state.user_nome = "Gestor"
+                    salvar_sessao(email_limpo, "Gestor", "Gestor")
+                    st.success("Login efetuado!")
+                    time.sleep(0.5)
+                    st.rerun() 
+                else:
+                    try:
+                        df_users_login = ler_csv_via_api_github("dados_usuarios.csv")
+                        col_email = 'E-MAIL' if 'E-MAIL' in df_users_login.columns else 'E-mail'
                         
-                        if senha_limpa == senha_correta:
-                            st.session_state.logged_in = True
-                            st.session_state.perfil = "Agente"
-                            st.session_state.user_email = email_limpo
-                            col_nome = 'COLABORADOR' if 'COLABORADOR' in dados_usr else 'Nome'
-                            st.session_state.user_nome = str(dados_usr[col_nome]).title()
-                            salvar_sessao(email_limpo, "Agente", st.session_state.user_nome)
-                            st.success("Login efetuado!")
-                            time.sleep(0.5)
-                            st.rerun()
+                        lista_emails = df_users_login[col_email].dropna().str.strip().str.lower().tolist()
+                        if email_limpo in lista_emails:
+                            dados_usr = df_users_login[df_users_login[col_email].str.strip().str.lower() == email_limpo].iloc[0]
+                            senha_correta = str(dados_usr.get('SENHA', '')).strip()
+                            
+                            # VALIDAÇÃO DE PRIMEIRO ACESSO OBRIGATÓRIO
+                            if senha_correta == "" or senha_correta.lower() == "nan":
+                                st.warning("⚠️ **Atenção:** Você ainda não possui uma senha cadastrada. Por favor, clique na aba **'Primeiro Acesso'** ao lado para criar a sua senha inicial.")
+                            elif senha_limpa == senha_correta:
+                                st.session_state.logged_in = True
+                                st.session_state.perfil = "Agente"
+                                st.session_state.user_email = email_limpo
+                                col_nome = 'COLABORADOR' if 'COLABORADOR' in dados_usr else 'Nome'
+                                st.session_state.user_nome = str(dados_usr[col_nome]).title()
+                                salvar_sessao(email_limpo, "Agente", st.session_state.user_nome)
+                                st.success("Login efetuado!")
+                                time.sleep(0.5)
+                                st.rerun()
+                            else:
+                                st.error("❌ E-mail ou senha incorreta.")
+                        else: st.error("❌ E-mail não encontrado na base de dados. Procure seu gestor.")
+                    except Exception: st.error("❌ Banco de dados de usuários não localizado.")
+        
+        # --- ABA DE CRIAÇÃO DE SENHA (PRIMEIRO ACESSO) ---
+        with aba_novo:
+            with st.form("form_novo_acesso"):
+                st.markdown("#### Criar minha senha")
+                st.info("Insira seu e-mail corporativo e escolha uma senha forte para acessar o sistema.")
+                email_novo = st.text_input("Seu E-mail corporativo cadastrado")
+                senha_nova = st.text_input("Crie uma Senha", type="password")
+                senha_confirma = st.text_input("Confirme a sua Senha", type="password")
+                submit_novo = st.form_submit_button("Cadastrar Senha", use_container_width=True)
+
+            if submit_novo:
+                email_novo_limpo = email_novo.strip().lower()
+                if len(senha_nova) < 4:
+                    st.error("A senha deve ter pelo menos 4 caracteres.")
+                elif senha_nova != senha_confirma:
+                    st.error("As senhas não coincidem. Tente novamente.")
+                else:
+                    try:
+                        df_users_update = ler_csv_via_api_github("dados_usuarios.csv")
+                        col_email_up = 'E-MAIL' if 'E-MAIL' in df_users_update.columns else 'E-mail'
+                        lista_emails_up = df_users_update[col_email_up].dropna().str.strip().str.lower().tolist()
+                        
+                        if email_novo_limpo in lista_emails_up:
+                            mask = df_users_update[col_email_up].str.strip().str.lower() == email_novo_limpo
+                            senha_atual = str(df_users_update.loc[mask, 'SENHA'].values[0]).strip()
+                            
+                            if senha_atual != "" and senha_atual.lower() != "nan":
+                                st.warning("⚠️ **Aviso:** Este e-mail já possui uma senha cadastrada. Vá para a aba 'Acessar Sistema' e faça login.")
+                            else:
+                                # Salva a nova senha na base do GitHub
+                                df_users_update.loc[mask, 'SENHA'] = senha_nova
+                                enviar_para_github("dados_usuarios.csv", df_users_update.to_csv(index=False))
+                                st.cache_data.clear()
+                                st.success("✅ **Senha cadastrada com sucesso!** Vá para a aba 'Acessar Sistema' para fazer o login.")
                         else:
-                            st.error("❌ E-mail ou senha incorreta.")
-                    else: st.error("❌ E-mail não encontrado na base de dados.")
-                except Exception: st.error("❌ Banco de dados de usuários não localizado.")
+                            st.error("❌ E-mail não localizado na base. Verifique se digitou corretamente ou procure a gestão.")
+                    except Exception:
+                        st.error("Erro ao conectar com a base de dados.")
 
 # ==========================================
 # SISTEMA LOGADO
 # ==========================================
 else:
-    st.sidebar.title("Opções")
-    st.sidebar.success(f"Logado como: **{st.session_state.user_nome}**")
+    st.sidebar.title("Configurações")
+    st.sidebar.markdown(f"👤 Conectado como:\n\n**{st.session_state.user_nome}**")
+    st.sidebar.markdown("---")
     
     st.sidebar.markdown("### 📅 Filtro de Período")
-    mes_view = st.sidebar.selectbox("Selecione o Mês:", MESES, index=4) 
-    ano_view = st.sidebar.selectbox("Selecione o Ano:", ANOS)
+    mes_view = st.sidebar.selectbox("Mês de Análise:", MESES, index=4) 
+    ano_view = st.sidebar.selectbox("Ano de Análise:", ANOS)
     
-    if st.sidebar.button("🚪 Sair (Logout)", use_container_width=True):
+    st.sidebar.markdown("---")
+    if st.sidebar.button("🚪 Sair do Sistema (Logout)", use_container_width=True):
         fazer_logout()
         st.rerun()
-        
-    st.sidebar.markdown("---")
 
     base_mestre_existe = True
     erro_dados = ""
@@ -577,14 +634,13 @@ else:
                 }), use_container_width=True)
 
     # ==========================================
-    # VISÃO DO AGENTE NOMINAL LOGADO
+    # VISÃO DO AGENTE NOMINAL LOGADO (NOVO LAYOUT)
     # ==========================================
     elif st.session_state.perfil == "Agente":
-        if not base_mestre_existe: st.error("⚠️ Configurando o sistema.")
+        if not base_mestre_existe: st.error("⚠️ Configurando o sistema. Tente novamente mais tarde.")
         elif not dados_carregados: st.warning(f"⚠️ {erro_dados}")
         else:
-            st.title(f"👤 Meu Painel de Controle Operacional ({mes_view}/{ano_view})")
-            
+            # Puxa dados mestres do usuário
             df_users_login = ler_csv_via_api_github("dados_usuarios.csv")
             if 'E-MAIL' in df_users_login.columns: df_users_login.rename(columns={'E-MAIL': 'E-mail'}, inplace=True)
             
@@ -594,20 +650,31 @@ else:
             data_admissao = str(meus_dados_cadastrais.get('ADMISSÃO', '')).strip()
             tempo_empresa = calcular_tempo_empresa(data_admissao)
             
-            c_info1, c_info2 = st.columns(2)
+            # --- CABEÇALHO ---
+            primeiro_nome = st.session_state.user_nome.split()[0]
+            st.markdown(f"<h2>👋 Olá, {primeiro_nome}!</h2>", unsafe_allow_html=True)
+            st.markdown(f"<p style='color: #6c757d; font-size: 16px;'>Acompanhe o seu desempenho e metas referentes a <b>{mes_view} de {ano_view}</b>.</p>", unsafe_allow_html=True)
+            st.markdown("---")
+
+            # --- BLOCO 1: MINHAS INFORMAÇÕES & STATUS ---
+            st.markdown("### 📋 Minhas Informações Cadastrais")
+            c_info1, c_info2, c_info3 = st.columns(3)
+            
             with c_info1:
-                st.markdown(f"<div class='info-card'>📅 <b>Data de Admissão:</b> {data_admissao if data_admissao != 'nan' else 'Não cadastrada'}</div>", unsafe_allow_html=True)
+                if mes_ferias == mes_view.upper():
+                    st.markdown(f"<div class='info-card' style='border-left: 5px solid #1e88e5;'><div class='info-title'>Status Operacional</div><div class='info-data' style='color:#1e88e5;'>🌴 Férias Programadas</div></div>", unsafe_allow_html=True)
+                elif str(meus_dados_cadastrais.get('STATUS', '')).strip().upper() == 'AFASTADO':
+                    st.markdown(f"<div class='info-card' style='border-left: 5px solid #e53e3e;'><div class='info-title'>Status Operacional</div><div class='info-data' style='color:#e53e3e;'>🩺 Afastado</div></div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<div class='info-card' style='border-left: 5px solid #28a745;'><div class='info-title'>Status Operacional</div><div class='info-data' style='color:#28a745;'>✅ Ativo</div></div>", unsafe_allow_html=True)
+            
             with c_info2:
-                st.markdown(f"<div class='info-card'>🏢 <b>Tempo de Empresa:</b> {tempo_empresa}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='info-card'><div class='info-title'>Data de Admissão</div><div class='info-data'>{data_admissao if data_admissao != 'nan' else 'Não cadastrada'}</div></div>", unsafe_allow_html=True)
+            
+            with c_info3:
+                st.markdown(f"<div class='info-card'><div class='info-title'>Tempo de Empresa</div><div class='info-data'>{tempo_empresa}</div></div>", unsafe_allow_html=True)
 
-            if mes_ferias == mes_view.upper():
-                st.markdown(f"<div class='ferias-card'>🌴 STATUS: VOCÊ TEM FÉRIAS PROGRAMADAS PARA ESTE MÊS ({mes_view.upper()})!</div>", unsafe_allow_html=True)
-            elif str(meus_dados_cadastrais.get('STATUS', '')).strip().upper() == 'AFASTADO':
-                st.markdown(f"<div class='ferias-card' style='background-color:#fff5f5;border-color:#e53e3e;color:#742a2a;'>🩺 Status: Você consta como AFASTADO no sistema.</div>", unsafe_allow_html=True)
-            else:
-                st.markdown(f"<div class='ferias-card' style='background-color:#f8f9fa;border-color:#ced4da;color:#495057;'>✅ Status: Ativo em {mes_view}/{ano_view} (Nenhuma folga/férias atrelada a este período).</div>", unsafe_allow_html=True)
-
-            # BUSCA INTELIGENTE DO E-MAIL NA BASE DO PERÍODO
+            # BUSCA DADOS DE PRODUÇÃO
             col_email_periodo = 'E-MAIL' if 'E-MAIL' in df_periodo.columns else 'E-mail'
             meus_dados = df_periodo[df_periodo[col_email_periodo].str.strip().str.lower() == st.session_state.user_email.strip().lower()]
             
@@ -619,27 +686,31 @@ else:
                 my_tx_ret = dados['Taxa_Retencao_Original'] if 'Taxa_Retencao_Original' in dados else 0.0
                 my_tx_canc = 100 - my_tx_ret if my_tx_ret > 0 else 0.0
                 
-                st.markdown("### ⭐ Minha Performance vs Metas Contratuais")
+                # --- BLOCO 2: QUALIDADE E PROCESSOS ---
+                st.markdown("### ⭐ Qualidade e Processos")
                 ca1, ca2, ca3, ca4 = st.columns(4)
-                with ca1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu CSAT</div><div class='kpi-value'>{my_csat:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
-                with ca2: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu IR</div><div class='kpi-value'>{my_ir:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_IR:.0f}%</div></div>", unsafe_allow_html=True)
-                with ca3: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Minha Conformidade (Escala)</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
-                with ca4: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Minha Aderência (Pausas)</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
+                with ca1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu CSAT</div><div class='kpi-value'>{my_csat:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
+                with ca2: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu Índice IR</div><div class='kpi-value'>{my_ir:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_IR:.0f}%</div></div>", unsafe_allow_html=True)
+                with ca3: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>Conformidade (Escala)</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
+                with ca4: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>Aderência (Pausas)</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
 
-                st.markdown("### 🎧 Meus Volumes e Atendimento")
+                # --- BLOCO 3: PRODUTIVIDADE E RETENÇÃO ---
+                st.markdown("### 🎧 Produtividade e Retenção")
                 co1, co2, co3, co4 = st.columns(4)
-                with co1: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Chats Atendidos</div><div class='kpi-value'>{int(dados['Vol. Chat']) if pd.notna(dados['Vol. Chat']) else 0}</div></div>", unsafe_allow_html=True)
-                with co2: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Meu TMA Chat</div><div class='kpi-value'>{dados['TMA Chat (Min)']:.1f} m</div></div>", unsafe_allow_html=True)
+                with co1: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Chats Atendidos</div><div class='kpi-value'>{int(dados['Vol. Chat']) if pd.notna(dados['Vol. Chat']) else 0}</div></div>", unsafe_allow_html=True)
+                with co2: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Meu TMA Chat</div><div class='kpi-value'>{dados['TMA Chat (Min)']:.1f} m</div></div>", unsafe_allow_html=True)
                 with co3: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
-                with co4: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_RETENCAO:.0f}% | Cancelamento: {my_tx_canc:.1f}%</div></div>", unsafe_allow_html=True)
+                with co4: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
             else:
-                st.info("Nenhum dado operacional associado ao seu perfil para este mês.")
+                st.info("Nenhum dado operacional associado ao seu perfil para este mês específico.")
 
             st.markdown("---")
-            st.subheader("🔐 Gestão de Segurança")
-            with st.expander("Clique aqui para alterar sua senha de acesso"):
+            
+            # --- BLOCO 4: CONFIGURAÇÕES DA CONTA (TROCA DE SENHA) ---
+            st.markdown("### ⚙️ Configurações da Conta")
+            with st.expander("🔐 Alterar minha senha de acesso"):
                 with st.form("form_senha"):
-                    st.info("Para sua segurança, escolha uma senha forte e não a compartilhe.")
+                    st.info("Para sua segurança, escolha uma senha forte e não a compartilhe com terceiros.")
                     nova_senha = st.text_input("Digite a sua nova senha", type="password")
                     confirmar_senha = st.text_input("Confirme a nova senha", type="password")
                     if st.form_submit_button("Salvar Nova Senha"):
