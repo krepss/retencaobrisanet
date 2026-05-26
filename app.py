@@ -22,6 +22,7 @@ META_IR = 88.0
 META_RETENCAO = 65.0
 META_ADERENCIA = 92.0
 META_CONFORMIDADE = 92.0
+META_TPC = 15.0  # Meta de Trabalho Pós-Chamada em Segundos
 
 MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
 ANOS = ["2026", "2027", "2028", "2029", "2030"]
@@ -170,8 +171,6 @@ if not st.session_state.logged_in:
 # ==========================================
 # FUNÇÕES DE LEITURA E GRAVAÇÃO VIA API GITHUB E UTILITÁRIAS
 # ==========================================
-
-# 🚀 NOVA FUNÇÃO BLINDADA: Lê arquivos locais (Uploads) com dupla checagem de Encoding (ANSI e UTF-8)
 def ler_csv_upload_seguro(arquivo, nrows=None):
     try:
         arquivo.seek(0)
@@ -216,6 +215,11 @@ def limpar_porcentagem(valor):
 def ms_para_minutos(ms):
     if pd.isna(ms): return 0.0
     return ms / 1000 / 60
+
+# NOVO: Função para manter o TPC em segundos de forma correta
+def ms_para_segundos(ms):
+    if pd.isna(ms): return 0.0
+    return ms / 1000
 
 def calcular_tempo_empresa(data_str):
     if pd.isna(data_str) or str(data_str).strip() == "": return "Não informada"
@@ -278,8 +282,8 @@ if not st.session_state.logged_in:
                         col_email = 'E-MAIL' if 'E-MAIL' in df_users_login.columns else 'E-mail'
                         
                         df_users_login[col_email] = df_users_login[col_email].astype(str)
-                        
                         mask_login = df_users_login[col_email].str.strip().str.lower() == email_limpo
+                        
                         if mask_login.any():
                             dados_usr = df_users_login[mask_login].iloc[0]
                             senha_correta = str(dados_usr.get('SENHA', '')).strip()
@@ -330,7 +334,6 @@ if not st.session_state.logged_in:
                         
                         if mask.any():
                             senha_atual = str(df_users_update.loc[mask, 'SENHA'].iloc[0]).strip()
-                            
                             if senha_atual != "" and senha_atual.lower() != "nan":
                                 st.warning("⚠️ **Aviso:** Este e-mail já tem uma senha cadastrada. Vá para a aba 'Acessar Sistema' e faça o login.")
                             else:
@@ -395,15 +398,12 @@ else:
         
         with aba_retencao:
             st.header("🎯 Inteligência e Qualidade de Retenção")
-            
             if not base_mestre_existe or df_periodo_mapeado.empty:
                 st.warning("Não há dados processados para gerar as análises de retenção neste mês.")
             else:
                 df_ret_ativos = df_periodo_mapeado[df_periodo_mapeado['Status_Dinamico'] == 'Ativo'].copy()
-                
                 if 'Taxa_Retencao_Original' in df_ret_ativos.columns and 'RT geral calculado' in df_ret_ativos.columns:
                     df_ret_ativos = df_ret_ativos[df_ret_ativos['RT geral calculado'] > 0]
-                    
                     if df_ret_ativos.empty:
                         st.info("Nenhuma oportunidade de retenção registrada para os operadores ativos neste mês.")
                     else:
@@ -419,25 +419,14 @@ else:
                         with c_ret4: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>Retenção Global</div><div class='kpi-value'>{taxa_global:.1f}%</div><div style='font-size:11px;color:#6c757d;'>Meta: {META_RETENCAO}%</div></div>", unsafe_allow_html=True)
                         
                         st.markdown("---")
-                        
                         st.subheader("⚠️ Matriz de Risco Operacional")
                         st.markdown("Identifique quem recebe muitas chamadas de cancelamento e salva poucos clientes (Quadrante Inferior Direito = **Risco Alto**).")
                         
-                        fig_scatter = px.scatter(df_ret_ativos, 
-                                                 x='RT geral calculado', 
-                                                 y='Taxa_Retencao_Original',
-                                                 size='RT geral calculado', 
-                                                 color='Taxa_Retencao_Original',
-                                                 color_continuous_scale=['#dc3545', '#ffc107', '#28a745'],
-                                                 hover_name='Nome Exibição',
-                                                 labels={'RT geral calculado': 'Total de Oportunidades (Volume)', 'Taxa_Retencao_Original': 'Taxa de Retenção (%)'},
-                                                 title="Impacto de Volume x Eficiência de Retenção")
-                        
+                        fig_scatter = px.scatter(df_ret_ativos, x='RT geral calculado', y='Taxa_Retencao_Original', size='RT geral calculado', color='Taxa_Retencao_Original', color_continuous_scale=['#dc3545', '#ffc107', '#28a745'], hover_name='Nome Exibição', labels={'RT geral calculado': 'Total de Oportunidades (Volume)', 'Taxa_Retencao_Original': 'Taxa de Retenção (%)'}, title="Impacto de Volume x Eficiência de Retenção")
                         fig_scatter.add_hline(y=META_RETENCAO, line_dash="dash", line_color="green", annotation_text=f"Meta ({META_RETENCAO}%)")
                         st.plotly_chart(fig_scatter, use_container_width=True)
 
                         st.markdown("---")
-                        
                         c_rank1, c_rank2 = st.columns(2)
                         df_ordenado = df_ret_ativos.sort_values(by='Taxa_Retencao_Original', ascending=False)
                         
@@ -459,22 +448,17 @@ else:
         with aba_ponto:
             st.header("⏰ Verificação de Banco de Horas")
             st.markdown("Faça o upload do arquivo de **Saldo de Horas** extraído do sistema para analisar os saldos da equipe.")
-            
             arquivo_ponto = st.file_uploader("Arraste e solte o arquivo de Saldo de Horas aqui (CSV ou Excel)", type=["csv", "xlsx"])
-            
             if arquivo_ponto:
                 try:
-                    if arquivo_ponto.name.endswith('.csv'):
-                        df_ponto = pd.read_csv(arquivo_ponto, skiprows=4, sep=None, engine='python')
-                    else:
-                        df_ponto = pd.read_excel(arquivo_ponto, skiprows=4)
+                    if arquivo_ponto.name.endswith('.csv'): df_ponto = pd.read_csv(arquivo_ponto, skiprows=4, sep=None, engine='python')
+                    else: df_ponto = pd.read_excel(arquivo_ponto, skiprows=4)
                     
                     if 'Nome' in df_ponto.columns and 'Total Banco' in df_ponto.columns:
                         def calcular_minutos_ponto(val):
                             if pd.isna(val): return 0
                             val_str = str(val).strip()
                             if not val_str or val_str == '00:00': return 0
-                            
                             multiplicador = -1 if '-' in val_str else 1
                             val_limpo = val_str.replace('+', '').replace('-', '')
                             try:
@@ -482,13 +466,10 @@ else:
                                 hh = int(partes[0])
                                 mm = int(partes[1]) if len(partes) > 1 else 0
                                 return (hh * 60 + mm) * multiplicador
-                            except:
-                                return 0
+                            except: return 0
                         
                         df_ponto['Minutos Saldo'] = df_ponto['Total Banco'].apply(calcular_minutos_ponto)
-                        df_ponto['Status Saldo'] = df_ponto['Minutos Saldo'].apply(
-                            lambda x: 'Negativo' if x < 0 else ('Positivo' if x > 0 else 'Zerado')
-                        )
+                        df_ponto['Status Saldo'] = df_ponto['Minutos Saldo'].apply(lambda x: 'Negativo' if x < 0 else ('Positivo' if x > 0 else 'Zerado'))
                         
                         tot_neg = len(df_ponto[df_ponto['Status Saldo'] == 'Negativo'])
                         tot_pos = len(df_ponto[df_ponto['Status Saldo'] == 'Positivo'])
@@ -501,15 +482,13 @@ else:
                         
                         st.markdown("---")
                         c_graf1, c_graf2 = st.columns(2)
-                        
                         with c_graf1:
                             df_negativos = df_ponto[df_ponto['Minutos Saldo'] < 0].sort_values('Minutos Saldo', ascending=True).head(15)
                             if not df_negativos.empty:
                                 fig_neg = px.bar(df_negativos, x='Minutos Saldo', y='Nome', orientation='h', title="🚨 Maiores Saldos Negativos", text='Total Banco', color_discrete_sequence=['#dc3545'])
                                 fig_neg.update_yaxes(autorange="reversed")
                                 st.plotly_chart(fig_neg, use_container_width=True)
-                            else:
-                                st.success("Nenhum saldo negativo na equipe!")
+                            else: st.success("Nenhum saldo negativo na equipe!")
                                 
                         with c_graf2:
                             df_positivos = df_ponto[df_ponto['Minutos Saldo'] > 0].sort_values('Minutos Saldo', ascending=False).head(15)
@@ -517,23 +496,17 @@ else:
                                 fig_pos = px.bar(df_positivos, x='Minutos Saldo', y='Nome', orientation='h', title="📈 Maiores Saldos Positivos", text='Total Banco', color_discrete_sequence=['#28a745'])
                                 fig_pos.update_yaxes(autorange="reversed")
                                 st.plotly_chart(fig_pos, use_container_width=True)
-                            else:
-                                st.info("Nenhum saldo positivo na equipe.")
+                            else: st.info("Nenhum saldo positivo na equipe.")
                                 
                         st.subheader("📋 Detalhamento Completo de Banco de Horas")
-                        
                         def formatar_cores_ponto(row):
                             if row['Status Saldo'] == 'Negativo': return ['background-color: #fff5f5; color: #dc3545;'] * len(row)
                             elif row['Status Saldo'] == 'Positivo': return ['background-color: #f6ffed; color: #28a745;'] * len(row)
                             return ['color: #6c757d;'] * len(row)
-                            
                         colunas_visiveis = ['Nome', 'Cargo', 'Saldo Anterior', 'Saldo do Período', 'Total Banco', 'Status Saldo']
                         st.dataframe(df_ponto[colunas_visiveis].style.apply(formatar_cores_ponto, axis=1), use_container_width=True)
-                        
-                    else:
-                        st.error("O arquivo carregado não tem as colunas corretas ('Nome' e 'Total Banco'). Verifique se é a extração correta.")
-                except Exception as e:
-                    st.error(f"Ocorreu um erro na leitura do arquivo de ponto: {e}")
+                    else: st.error("O arquivo carregado não tem as colunas corretas ('Nome' e 'Total Banco'). Verifique se é a extração correta.")
+                except Exception as e: st.error(f"Ocorreu um erro na leitura do arquivo de ponto: {e}")
 
         with aba_equipe:
             st.header("👥 Cadastro Unificado da Equipe (Mestre)")
@@ -585,13 +558,10 @@ else:
                     resumo_mes['Ordem'] = resumo_mes['FÉRIAS 2026'].map(ordem_meses)
                     resumo_mes = resumo_mes.sort_values('Ordem').drop('Ordem', axis=1)
 
-                    fig_ferias = px.bar(resumo_mes, x='FÉRIAS 2026', y='Operadores Ausentes', text='Operadores Ausentes',
-                                        title="📊 Distribuição de Férias Programadas (Por Mês)", 
-                                        color_discrete_sequence=['#1e88e5'])
+                    fig_ferias = px.bar(resumo_mes, x='FÉRIAS 2026', y='Operadores Ausentes', text='Operadores Ausentes', title="📊 Distribuição de Férias Programadas (Por Mês)", color_discrete_sequence=['#1e88e5'])
                     fig_ferias.update_traces(textposition='auto', textfont_size=16, textfont_color="white")
                     st.plotly_chart(fig_ferias, use_container_width=True)
-                else:
-                    st.info("Nenhuma programação de férias lançada até o momento.")
+                else: st.info("Nenhuma programação de férias lançada até o momento.")
                 
                 st.markdown("---")
                 st.markdown("#### ✏️ Lançamento Rápido de Férias")
@@ -599,7 +569,6 @@ else:
                 
                 colunas_ferias = ['COLABORADOR', 'STATUS', 'FÉRIAS 2026']
                 df_edicao_ferias = df_ferias[colunas_ferias].copy()
-                
                 df_ferias_salvo = st.data_editor(df_edicao_ferias, num_rows="dynamic", use_container_width=True, key="ed_ferias_rapida")
                 
                 if st.button("💾 Salvar Calendário de Férias", type="primary"):
@@ -610,9 +579,9 @@ else:
                     st.success("Férias atualizadas com sucesso!")
                     time.sleep(0.5)
                     st.rerun()
-            except Exception:
-                st.warning("Base de usuários indisponível.")
+            except Exception: st.warning("Base de usuários indisponível.")
 
+        # --- O SEGREDO DO SUCESSO: LEITOR UNIVERSAL ROBUSTO NA ABA UPLOAD ---
         with aba_upload:
             st.header("⚙️ Central de Consolidação de Relatórios")
             
@@ -627,14 +596,18 @@ else:
                 for arquivo in arquivos_carregados:
                     try:
                         df_header = ler_csv_upload_seguro(arquivo, nrows=0)
-                        cols = [c.strip() for c in df_header.columns]
-                        arquivo.seek(0)
-                        if 'Aderência (%)' in cols and 'Conformidade (%)' in cols and 'Agente' in cols: relatorios_identificados["Aderência e Conformidade"] = arquivo
-                        elif 'CSAT' in cols and 'Atendente' in cols: relatorios_identificados["Pesquisa (CSAT/IR)"] = arquivo
-                        elif 'Nome do agente' in cols and 'Atendidas' in cols:
-                            if "chat" in arquivo.name.lower(): relatorios_identificados["Chat"] = arquivo
+                        
+                        cols_upper = [str(c).strip().upper() for c in df_header.columns]
+                        
+                        if any('ADER' in c for c in cols_upper) and any('CONFOR' in c for c in cols_upper):
+                            relatorios_identificados["Aderência e Conformidade"] = arquivo
+                        elif any('CSAT' in c for c in cols_upper) and any('ATENDENTE' in c for c in cols_upper):
+                            relatorios_identificados["Pesquisa (CSAT/IR)"] = arquivo
+                        elif any('ATENDIDAS' in c for c in cols_upper) and any('NOME DO AGENTE' in c for c in cols_upper):
+                            if "CHAT" in arquivo.name.upper(): relatorios_identificados["Chat"] = arquivo
                             else: relatorios_identificados["Voz"] = arquivo
-                        elif 'responsavel' in cols and '% de retenção' in cols: relatorios_identificados["Retenção"] = arquivo
+                        elif any('RESPONSAVEL' in c for c in cols_upper) and any('RETEN' in c for c in cols_upper):
+                            relatorios_identificados["Retenção"] = arquivo
                     except Exception: pass
 
             st.markdown("### 📋 Status da Validação")
@@ -655,9 +628,13 @@ else:
                         df_pesq = ler_csv_upload_seguro(relatorios_identificados["Pesquisa (CSAT/IR)"])
                         df_users = ler_csv_via_api_github("dados_usuarios.csv")
                         
-                        df_perf['Aderência (%)'] = df_perf['Aderência (%)'].apply(limpar_porcentagem)
-                        df_perf['Conformidade (%)'] = df_perf['Conformidade (%)'].apply(limpar_porcentagem)
-                        df_perf['Chave_Nome'] = df_perf['Agente'].astype(str).str.strip().str.upper()
+                        col_ade = next((c for c in df_perf.columns if 'ADER' in str(c).upper()), None)
+                        col_conf = next((c for c in df_perf.columns if 'CONFOR' in str(c).upper()), None)
+                        col_agente = next((c for c in df_perf.columns if 'AGENTE' in str(c).upper()), None)
+                        
+                        df_perf['Aderência (%)'] = df_perf[col_ade].apply(limpar_porcentagem)
+                        df_perf['Conformidade (%)'] = df_perf[col_conf].apply(limpar_porcentagem)
+                        df_perf['Chave_Nome'] = df_perf[col_agente].astype(str).str.strip().str.upper()
                         
                         col_nome = 'COLABORADOR' if 'COLABORADOR' in df_users.columns else 'Nome'
                         df_users['Chave_Nome'] = df_users[col_nome].astype(str).str.strip().str.upper()
@@ -667,21 +644,37 @@ else:
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
                         df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
                         
+                        # --- CAPTURA DE TPC PARA CHAT ---
                         df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
-                        df_chat_agg = df_chat.groupby('Chave_Nome').agg({'Atendidas': 'sum', 'Tratamento médio': 'mean'}).reset_index()
+                        col_tpc_chat = next((c for c in df_chat.columns if 'TPC' in str(c).upper() or 'PÓS' in str(c).upper() or 'POS' in str(c).upper() or 'TRABALHO' in str(c).upper()), None)
+                        agg_chat = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
+                        if col_tpc_chat: agg_chat[col_tpc_chat] = 'mean'
+                        
+                        df_chat_agg = df_chat.groupby('Chave_Nome').agg(agg_chat).reset_index()
                         df_chat_agg.rename(columns={'Atendidas': 'Vol. Chat', 'Tratamento médio': 'TMA Chat (ms)'}, inplace=True)
                         df_chat_agg['TMA Chat (Min)'] = df_chat_agg['TMA Chat (ms)'].apply(ms_para_minutos)
+                        if col_tpc_chat:
+                            df_chat_agg.rename(columns={col_tpc_chat: 'TPC Chat (ms)'}, inplace=True)
+                            df_chat_agg['TPC Chat (Seg)'] = df_chat_agg['TPC Chat (ms)'].apply(ms_para_segundos)
                         
+                        # --- CAPTURA DE TPC PARA VOZ ---
                         df_voz['Chave_Nome'] = df_voz['Nome do agente'].astype(str).str.strip().str.upper()
-                        df_voz_agg = df_voz.groupby('Chave_Nome').agg({'Atendidas': 'sum', 'Tratamento médio': 'mean'}).reset_index()
+                        col_tpc_voz = next((c for c in df_voz.columns if 'TPC' in str(c).upper() or 'PÓS' in str(c).upper() or 'POS' in str(c).upper() or 'TRABALHO' in str(c).upper()), None)
+                        agg_voz = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
+                        if col_tpc_voz: agg_voz[col_tpc_voz] = 'mean'
+                        
+                        df_voz_agg = df_voz.groupby('Chave_Nome').agg(agg_voz).reset_index()
                         df_voz_agg.rename(columns={'Atendidas': 'Vol. Voz', 'Tratamento médio': 'TMA Voz (ms)'}, inplace=True)
                         df_voz_agg['TMA Voz (Min)'] = df_voz_agg['TMA Voz (ms)'].apply(ms_para_minutos)
+                        if col_tpc_voz:
+                            df_voz_agg.rename(columns={col_tpc_voz: 'TPC Voz (ms)'}, inplace=True)
+                            df_voz_agg['TPC Voz (Seg)'] = df_voz_agg['TPC Voz (ms)'].apply(ms_para_segundos)
                         
                         df_pesq['Chave_Nome'] = df_pesq['Atendente'].astype(str).str.strip().str.upper()
                         df_pesq['CSAT_Num'] = pd.to_numeric(df_pesq['CSAT'], errors='coerce')
                         df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(Total_Pesq_CSAT=('CSAT_Num', 'count'), Boas_Pesq_CSAT=('CSAT_Num', lambda x: (x >= 4).sum()), Total_Pesq_IR=('IR', 'count'), Sim_Pesq_IR=('IR', lambda x: (x.astype(str).str.strip().str.upper() == 'SIM').sum())).reset_index()
 
-                        df_novo = pd.merge(df_users, df_perf, on='Chave_Nome', how='left')
+                        df_novo = pd.merge(df_users, df_perf[['Chave_Nome', 'Aderência (%)', 'Conformidade (%)']], on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculado', 'Taxa_Retencao_Original']], on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_chat_agg, on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_voz_agg, on='Chave_Nome', how='left')
@@ -865,18 +858,27 @@ else:
                     st.markdown("---")
 
                 st.subheader("👥 Detalhamento Operacional por Colaborador")
-                colunas_tabela = ['Nome Exibição', 'Status_Dinamico', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Conformidade (%)', 'Aderência (%)', 'Vol. Chat', 'TMA Chat (Min)', 'Vol. Voz', 'TMA Voz (Min)', 'RT geral valido', '% Retenção', '% Cancelamento']
+                colunas_tabela = ['Nome Exibição', 'Status_Dinamico', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Conformidade (%)', 'Aderência (%)', 'Vol. Chat', 'TMA Chat (Min)']
+                if 'TPC Chat (Seg)' in df_final_escopo.columns: colunas_tabela.append('TPC Chat (Seg)')
+                colunas_tabela += ['Vol. Voz', 'TMA Voz (Min)']
+                if 'TPC Voz (Seg)' in df_final_escopo.columns: colunas_tabela.append('TPC Voz (Seg)')
+                colunas_tabela += ['RT geral valido', '% Retenção', '% Cancelamento']
+                
                 colunas_tabela = list(dict.fromkeys(colunas_tabela))
                 
                 def estilizar_linhas_status(row):
                     if str(row['Status_Dinamico']).strip().lower() != 'ativo': return ['background-color: #f1f3f5; color: #adb5bd; font-style: italic;'] * len(row)
                     return [''] * len(row)
 
-                st.dataframe(df_final_escopo[colunas_tabela].style.apply(estilizar_linhas_status, axis=1).format({
+                format_dict = {
                     'CSAT_Agente (%)': '{:.1f}%', 'IR_Agente (%)': '{:.1f}%', 'Aderência (%)': '{:.1f}%', 'Conformidade (%)': '{:.1f}%',
                     '% Retenção': '{:.2f}%', '% Cancelamento': '{:.2f}%', 'Vol. Chat': '{:,.0f}', 'TMA Chat (Min)': '{:.1f}m',
                     'Vol. Voz': '{:,.0f}', 'TMA Voz (Min)': '{:.1f}m', 'RT geral valido': '{:,.0f}'
-                }), use_container_width=True)
+                }
+                if 'TPC Chat (Seg)' in df_final_escopo.columns: format_dict['TPC Chat (Seg)'] = '{:.1f}s'
+                if 'TPC Voz (Seg)' in df_final_escopo.columns: format_dict['TPC Voz (Seg)'] = '{:.1f}s'
+
+                st.dataframe(df_final_escopo[colunas_tabela].style.apply(estilizar_linhas_status, axis=1).format(format_dict), use_container_width=True)
 
     # ==========================================
     # VISÃO DO AGENTE NOMINAL LOGADO (GAMIFICADO)
@@ -940,7 +942,6 @@ else:
                     my_csat = (dados['Boas_Pesq_CSAT'] / dados['Total_Pesq_CSAT'] * 100) if tem_colunas_novas and dados['Total_Pesq_CSAT'] > 0 else 0.0
                     my_ir = (dados['Sim_Pesq_IR'] / dados['Total_Pesq_IR'] * 100) if tem_colunas_novas and dados['Total_Pesq_IR'] > 0 else 0.0
                     my_tx_ret = dados['Taxa_Retencao_Original'] if 'Taxa_Retencao_Original' in dados else 0.0
-                    my_tx_canc = 100 - my_tx_ret if my_tx_ret > 0 else 0.0
                     
                     df_ranking = df_periodo.copy()
                     rank_display = "N/A"
@@ -983,12 +984,22 @@ else:
                     with ca3: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>Conformidade (Escala)</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
                     with ca4: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>Aderência (Pausas)</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
 
-                    st.markdown("### 🎧 Produtividade e Retenção")
+                    st.markdown("### 🎧 Produtividade")
                     co1, co2, co3, co4 = st.columns(4)
                     with co1: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Chats Atendidos</div><div class='kpi-value'>{int(dados['Vol. Chat']) if pd.notna(dados['Vol. Chat']) else 0}</div></div>", unsafe_allow_html=True)
-                    with co2: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Meu TMA Chat</div><div class='kpi-value'>{dados['TMA Chat (Min)']:.1f} m</div></div>", unsafe_allow_html=True)
-                    with co3: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
+                    with co2: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Meu TMA Chat</div><div class='kpi-value'>{dados['TMA Chat (Min)']:.1f}m</div></div>", unsafe_allow_html=True)
+                    
+                    val_tpc_chat = f"{dados['TPC Chat (Seg)']:.1f}s" if 'TPC Chat (Seg)' in df_periodo.columns else "--"
+                    with co3: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Meu TPC Chat</div><div class='kpi-value'>{val_tpc_chat}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_TPC:.0f}s</div></div>", unsafe_allow_html=True)
                     with co4: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
+
+                    cv1, cv2, cv3, cv4 = st.columns(4)
+                    with cv1: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
+                    with cv2: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Meu TMA Voz</div><div class='kpi-value'>{dados['TMA Voz (Min)']:.1f}m</div></div>", unsafe_allow_html=True)
+                    
+                    val_tpc_voz = f"{dados['TPC Voz (Seg)']:.1f}s" if 'TPC Voz (Seg)' in df_periodo.columns else "--"
+                    with cv3: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Meu TPC Voz</div><div class='kpi-value'>{val_tpc_voz}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_TPC:.0f}s</div></div>", unsafe_allow_html=True)
+                    with cv4: pass
                 else:
                     st.info(f"Ainda não existem dados operacionais associados ao seu perfil para as planilhas de {mes_view}.")
 
