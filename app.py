@@ -244,6 +244,49 @@ def carregar_dados_mestre_seguro():
     df['text_mes'] = df['Mês'].astype(str).str.strip().str.title()
     return df
 
+def obter_dados_historicos(df, agente="Todos"):
+    """Filtra e consolida a base de dados de todos os meses para criar o gráfico histórico"""
+    df_hist = df.copy()
+    
+    if agente != "Todos":
+        if 'Nome Exibição' not in df_hist.columns:
+            df_hist['Nome Exibição'] = df_hist['Chave_Nome'].str.title() if 'Chave_Nome' in df_hist.columns else "Desconhecido"
+        df_hist = df_hist[df_hist['Nome Exibição'] == agente]
+    
+    if df_hist.empty:
+        return pd.DataFrame()
+        
+    meses_map = {m: i for i, m in enumerate(MESES, 1)}
+    df_hist['Mes_Num'] = df_hist['text_mes'].map(meses_map)
+    df_hist = df_hist.dropna(subset=['Mes_Num'])
+    df_hist['Periodo_Ordem'] = df_hist['text_ano'].astype(str) + "-" + df_hist['Mes_Num'].astype(int).astype(str).str.zfill(2)
+    
+    cols_sum = ['Total_Pesq_CSAT', 'Boas_Pesq_CSAT', 'Total_Pesq_IR', 'Sim_Pesq_IR', 'RT geral valido', 'RT geral calculado']
+    cols_mean = ['Aderência (%)', 'Conformidade (%)', 'Taxa_Retencao_Original']
+    
+    for c in cols_sum + cols_mean:
+        if c not in df_hist.columns:
+            df_hist[c] = 0.0
+            
+    df_hist[cols_sum] = df_hist[cols_sum].apply(pd.to_numeric, errors='coerce').fillna(0)
+    df_hist[cols_mean] = df_hist[cols_mean].apply(pd.to_numeric, errors='coerce').fillna(0)
+    
+    grp = df_hist.groupby(['Periodo_Ordem', 'text_mes', 'text_ano']).agg({
+        'Total_Pesq_CSAT': 'sum', 'Boas_Pesq_CSAT': 'sum',
+        'Total_Pesq_IR': 'sum', 'Sim_Pesq_IR': 'sum',
+        'RT geral valido': 'sum', 'RT geral calculado': 'sum',
+        'Aderência (%)': 'mean', 'Conformidade (%)': 'mean',
+        'Taxa_Retencao_Original': 'mean'
+    }).reset_index()
+    
+    grp['CSAT Ponderado (%)'] = grp.apply(lambda r: (r['Boas_Pesq_CSAT']/r['Total_Pesq_CSAT']*100) if r['Total_Pesq_CSAT']>0 else 0, axis=1)
+    grp['Índice IR (%)'] = grp.apply(lambda r: (r['Sim_Pesq_IR']/r['Total_Pesq_IR']*100) if r['Total_Pesq_IR']>0 else 0, axis=1)
+    grp['Taxa Retenção (%)'] = grp.apply(lambda r: (r['RT geral valido']/r['RT geral calculado']*100) if r['RT geral calculado']>0 else r['Taxa_Retencao_Original'], axis=1)
+    
+    grp = grp.sort_values('Periodo_Ordem')
+    grp['Mês/Ano'] = grp['text_mes'].str[:3] + "/" + grp['text_ano'].str[-2:]
+    return grp
+
 # ==========================================
 # TELA DE LOGIN APRIMORADA E INTUITIVA
 # ==========================================
@@ -800,8 +843,8 @@ else:
                 with c1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>⭐ CSAT Ponderado</div><div class='kpi-value'>{v_csat:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
                 with c2: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>🎯 Índice IR</div><div class='kpi-value'>{v_ir:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_IR:.0f}%</div></div>", unsafe_allow_html=True)
                 with c3: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>📈 Taxa Retenção</div><div class='kpi-value'>{v_retencao:.2f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
-                with c4: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>📅 Conformidade</div><div class='kpi-value'>{v_conf:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
-                with c5: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>⏱️ Aderência</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
+                with c4: st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>📉 Taxa Cancelamento</div><div class='kpi-value'>{v_cancelamento:.2f}%</div><div style='font-size:11px;color:#dc3545;'>Complementar</div></div>", unsafe_allow_html=True)
+                with c5: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>📅 Conformidade</div><div class='kpi-value'>{v_conf:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
 
                 col_chat, col_voz = st.columns(2)
                 with col_chat:
@@ -821,7 +864,35 @@ else:
                     with cv3: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>TPC Voz</div><div class='kpi-value'>{val_tpc_voz}</div><div style='font-size:11px;color:#6c757d;font-weight:bold;'>Meta: {META_TPC:.0f}s</div></div>", unsafe_allow_html=True)
 
                 st.markdown("---")
+                
+                # --- GRÁFICO HISTÓRICO GESTOR ---
+                st.subheader("📈 Análise de Evolução Histórica")
+                df_hist_plot = obter_dados_historicos(df_completo, filtro_agente)
+                
+                if not df_hist_plot.empty and len(df_hist_plot) > 0:
+                    indicadores_hist = ['CSAT Ponderado (%)', 'Índice IR (%)', 'Taxa Retenção (%)', 'Aderência (%)', 'Conformidade (%)']
+                    metrica_escolhida = st.selectbox("Selecione o indicador para acompanhar a evolução ao longo do tempo:", indicadores_hist)
+                    
+                    fig_hist = px.line(df_hist_plot, x='Mês/Ano', y=metrica_escolhida, markers=True, text=metrica_escolhida, title=f"Evolução de {metrica_escolhida} - {filtro_agente}")
+                    fig_hist.update_traces(textposition="top center", texttemplate='%{text:.1f}%', line=dict(width=4), marker=dict(size=10))
+                    
+                    meta_valor = 0
+                    if "CSAT" in metrica_escolhida: meta_valor = META_CSAT
+                    elif "IR" in metrica_escolhida: meta_valor = META_IR
+                    elif "Retenção" in metrica_escolhida: meta_valor = META_RETENCAO
+                    elif "Aderência" in metrica_escolhida: meta_valor = META_ADERENCIA
+                    elif "Conformidade" in metrica_escolhida: meta_valor = META_CONFORMIDADE
+                    
+                    if meta_valor > 0:
+                        fig_hist.add_hline(y=meta_valor, line_dash="dash", line_color="green", annotation_text=f"Meta: {meta_valor}%")
+                        
+                    fig_hist.update_yaxes(range=[0, max(df_hist_plot[metrica_escolhida].max() + 10, meta_valor + 5, 100)])
+                    st.plotly_chart(fig_hist, use_container_width=True)
+                else:
+                    st.info("Faça o upload de mais de um mês para visualizar a curva histórica.")
 
+                st.markdown("---")
+                
                 if filtro_agente == "Todos":
                     st.subheader("📊 Central de Auditoria Visual de Indicadores")
                     tab_graf_1, tab_graf_2, tab_graf_3 = st.tabs(["🏅 Rankings de Qualidade & Retenção", "⏱️ Rankings de Processos & Eficiência", "💬 Volumetria de Atendimentos"])
@@ -938,7 +1009,7 @@ else:
                 st.dataframe(df_final_escopo[colunas_tabela].style.apply(estilizar_linhas_status, axis=1).format(format_dict), use_container_width=True)
 
     # ==========================================
-    # VISÃO DO AGENTE NOMINAL LOGADO (GAMIFICADO)
+    # VISÃO DO AGENTE NOMINAL LOGADO (GAMIFICADO E HISTÓRICO)
     # ==========================================
     elif st.session_state.perfil == "Agente":
         if not base_mestre_existe: st.error("⚠️ Configurando o sistema. Tente novamente mais tarde.")
@@ -1057,6 +1128,39 @@ else:
                     val_tpc_voz = f"{dados['TPC Voz (Seg)']:.1f}s" if 'TPC Voz (Seg)' in df_periodo.columns and pd.notna(dados.get('TPC Voz (Seg)')) and dados['TPC Voz (Seg)'] > 0 else "--"
                     with cv3: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Meu TPC Voz</div><div class='kpi-value'>{val_tpc_voz}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_TPC:.0f}s</div></div>", unsafe_allow_html=True)
                     with cv4: pass
+
+                    st.markdown("---")
+                    
+                    # --- GRÁFICO HISTÓRICO AGENTE ---
+                    st.markdown("### 📈 Minha Evolução Histórica")
+                    
+                    df_completo_agente = df_completo[df_completo[col_email_periodo].str.strip().str.lower() == st.session_state.user_email.strip().lower()].copy()
+                    if not df_completo_agente.empty:
+                        df_completo_agente['Nome Exibição'] = "Eu"
+                        df_hist_plot_ag = obter_dados_historicos(df_completo_agente, "Eu")
+                        
+                        if not df_hist_plot_ag.empty and len(df_hist_plot_ag) > 0:
+                            indicadores_hist_ag = ['CSAT Ponderado (%)', 'Índice IR (%)', 'Taxa Retenção (%)', 'Aderência (%)', 'Conformidade (%)']
+                            metrica_escolhida_ag = st.selectbox("Selecione o indicador para acompanhar o seu progresso:", indicadores_hist_ag, key="hist_ag")
+                            
+                            fig_hist_ag = px.line(df_hist_plot_ag, x='Mês/Ano', y=metrica_escolhida_ag, markers=True, text=metrica_escolhida_ag, title=f"A Minha Evolução: {metrica_escolhida_ag}")
+                            fig_hist_ag.update_traces(textposition="top center", texttemplate='%{text:.1f}%', line=dict(width=4), marker=dict(size=10))
+                            
+                            meta_valor_ag = 0
+                            if "CSAT" in metrica_escolhida_ag: meta_valor_ag = META_CSAT
+                            elif "IR" in metrica_escolhida_ag: meta_valor_ag = META_IR
+                            elif "Retenção" in metrica_escolhida_ag: meta_valor_ag = META_RETENCAO
+                            elif "Aderência" in metrica_escolhida_ag: meta_valor_ag = META_ADERENCIA
+                            elif "Conformidade" in metrica_escolhida_ag: meta_valor_ag = META_CONFORMIDADE
+                            
+                            if meta_valor_ag > 0:
+                                fig_hist_ag.add_hline(y=meta_valor_ag, line_dash="dash", line_color="green", annotation_text=f"Meta: {meta_valor_ag}%")
+                                
+                            fig_hist_ag.update_yaxes(range=[0, max(df_hist_plot_ag[metrica_escolhida_ag].max() + 10, meta_valor_ag + 5, 100)])
+                            st.plotly_chart(fig_hist_ag, use_container_width=True)
+                        else:
+                            st.info("Nenhum dado histórico suficiente para gerar o gráfico.")
+
                 else:
                     st.info(f"Ainda não existem dados operacionais associados ao seu perfil para as planilhas de {mes_view}.")
 
