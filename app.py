@@ -849,36 +849,27 @@ else:
 
                 st.markdown("---")
                 
-                st.subheader("📅 Histórico de Absenteísmo (Quem faltou e quando)")
+                st.subheader(f"📅 Absenteísmo no Mês ({mes_view}/{ano_view})")
                 
-                if 'Faltas' in df_completo.columns:
-                    df_hist_faltas = df_completo.copy()
+                if 'Faltas' in df_periodo_mapeado.columns:
+                    df_faltas_mes = df_periodo_mapeado.copy()
                     
-                    def get_status_global(row):
-                        if str(row.get('STATUS', 'ATIVO')).strip().upper() == 'AFASTADO': return 'Afastado'
-                        mes_ferias = str(row.get('FÉRIAS 2026', '')).strip().upper()
-                        if mes_ferias == str(row.get('text_mes', row.get('Mês', ''))).strip().upper(): return 'Férias'
-                        return 'Ativo'
-                        
-                    df_hist_faltas['Status_Dinamico'] = df_hist_faltas.apply(get_status_global, axis=1)
-                    df_hist_faltas['Faltas_Reais'] = df_hist_faltas.apply(lambda r: pd.to_numeric(r.get('Faltas', 0), errors='coerce') if r['Status_Dinamico'] == 'Ativo' else 0, axis=1).fillna(0)
+                    df_faltas_mes['Faltas_Reais'] = df_faltas_mes.apply(lambda r: pd.to_numeric(r.get('Faltas', 0), errors='coerce') if r['Status_Dinamico'] == 'Ativo' else 0, axis=1).fillna(0)
                     
-                    df_faltou = df_hist_faltas[df_hist_faltas['Faltas_Reais'] > 0].copy()
+                    df_faltou = df_faltas_mes[df_faltas_mes['Faltas_Reais'] > 0].copy()
                     if not df_faltou.empty:
-                        df_faltou['Período'] = df_faltou['Mês'].astype(str) + "/" + df_faltou['Ano'].astype(str)
                         df_faltou_grp = df_faltou.groupby('Nome Exibição').agg(
-                            Total_Faltas=('Faltas_Reais', 'sum'),
-                            Meses_Falta=('Período', lambda x: ", ".join(x))
+                            Total_Faltas=('Faltas_Reais', 'sum')
                         ).reset_index()
                         
-                        df_faltou_grp.rename(columns={'Nome Exibição': 'Operador', 'Total_Faltas': 'Total de Faltas', 'Meses_Falta': 'Meses com Falta'}, inplace=True)
-                        df_faltou_grp = df_faltou_grp.sort_values(by='Total de Faltas', ascending=False)
+                        df_faltou_grp.rename(columns={'Nome Exibição': 'Operador', 'Total_Faltas': 'Faltas no Mês'}, inplace=True)
+                        df_faltou_grp = df_faltou_grp.sort_values(by='Faltas no Mês', ascending=False)
                         
-                        st.dataframe(df_faltou_grp.style.format({'Total de Faltas': '{:.0f}'}), use_container_width=True)
+                        st.dataframe(df_faltou_grp.style.format({'Faltas no Mês': '{:.0f}'}), use_container_width=True)
                     else:
-                        st.success("🎉 Nenhuma falta registrada no histórico da operação (entre os ativos)!")
+                        st.success(f"🎉 Nenhuma falta registrada na operação em {mes_view}/{ano_view} (entre os ativos)!")
                 else:
-                    st.info("O histórico de faltas será construído conforme os próximos meses forem processados.")
+                    st.info(f"O relatório de faltas para {mes_view}/{ano_view} não está disponível.")
 
                 st.markdown("---")
                 
