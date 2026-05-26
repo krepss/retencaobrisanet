@@ -641,7 +641,6 @@ else:
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
                         df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
                         
-                        # --- CAPTURA DE TPC CHAT ---
                         df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
                         col_tpc_chat = next((c for c in df_chat.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
                         agg_chat = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
@@ -654,7 +653,6 @@ else:
                             df_chat_agg.rename(columns={col_tpc_chat: 'TPC Chat (ms)'}, inplace=True)
                             df_chat_agg['TPC Chat (Seg)'] = df_chat_agg['TPC Chat (ms)'].apply(ms_para_segundos)
                         
-                        # --- CAPTURA DE TPC VOZ ---
                         df_voz['Chave_Nome'] = df_voz['Nome do agente'].astype(str).str.strip().str.upper()
                         col_tpc_voz = next((c for c in df_voz.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
                         agg_voz = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
@@ -680,7 +678,6 @@ else:
                         df_novo['Mês'] = mes_up
                         df_novo['Ano'] = str(ano_up)
                         
-                        # --- SOLUÇÃO: CONCATENAR COM O HISTÓRICO EM VEZ DE SOBRESCREVER ---
                         if 'TPC Chat (Seg)' not in df_novo.columns: df_novo['TPC Chat (Seg)'] = 0.0
                         if 'TPC Voz (Seg)' not in df_novo.columns: df_novo['TPC Voz (Seg)'] = 0.0
                         
@@ -792,21 +789,36 @@ else:
                 tma_chat_medio = df_final_escopo['TMA Chat (Min)'].mean()
                 total_vol_voz = df_final_escopo['Vol. Voz'].sum()
                 tma_voz_medio = df_final_escopo['TMA Voz (Min)'].mean()
+                
+                tpc_chat_medio = df_final_escopo['TPC Chat (Seg)'].mean() if 'TPC Chat (Seg)' in df_final_escopo.columns else 0.0
+                tpc_voz_medio = df_final_escopo['TPC Voz (Seg)'].mean() if 'TPC Voz (Seg)' in df_final_escopo.columns else 0.0
 
                 st.subheader(f"🎯 Métricas Consolidadas ({filtro_agente})")
+                
+                st.markdown("##### 🌟 Qualidade, Retenção e Escala")
                 c1, c2, c3, c4, c5 = st.columns(5)
                 with c1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>⭐ CSAT Ponderado</div><div class='kpi-value'>{v_csat:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
                 with c2: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>🎯 Índice IR</div><div class='kpi-value'>{v_ir:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_IR:.0f}%</div></div>", unsafe_allow_html=True)
                 with c3: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>📈 Taxa Retenção</div><div class='kpi-value'>{v_retencao:.2f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
-                with c4: st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>📉 Taxa Cancelamento</div><div class='kpi-value'>{v_cancelamento:.2f}%</div><div style='font-size:11px;color:#dc3545;'>Complementar</div></div>", unsafe_allow_html=True)
-                with c5: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>📅 Conformidade (Escala)</div><div class='kpi-value'>{v_conf:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
+                with c4: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>📅 Conformidade</div><div class='kpi-value'>{v_conf:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
+                with c5: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>⏱️ Aderência</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
 
-                cx0, cx1, cx2, cx3, cx4 = st.columns(5)
-                with cx0: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>⏱️ Aderência (Pausas)</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
-                with cx1: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>💬 Vol. Total Chat</div><div class='kpi-value'>{int(total_vol_chat):,}</div></div>", unsafe_allow_html=True)
-                with cx2: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>⏳ TMA Chat</div><div class='kpi-value'>{tma_chat_medio:.1f} min</div></div>", unsafe_allow_html=True)
-                with cx3: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>📞 Vol. Total Voz</div><div class='kpi-value'>{int(total_vol_voz):,}</div></div>", unsafe_allow_html=True)
-                with cx4: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>⏳ TMA Voz</div><div class='kpi-value'>{tma_voz_medio:.1f} min</div></div>", unsafe_allow_html=True)
+                col_chat, col_voz = st.columns(2)
+                with col_chat:
+                    st.markdown("##### 💬 Desempenho de Chat")
+                    cc1, cc2, cc3 = st.columns(3)
+                    with cc1: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Vol. Chat</div><div class='kpi-value'>{int(total_vol_chat):,}</div></div>", unsafe_allow_html=True)
+                    with cc2: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>TMA Chat</div><div class='kpi-value'>{tma_chat_medio:.1f}m</div></div>", unsafe_allow_html=True)
+                    val_tpc_chat = f"{tpc_chat_medio:.1f}s" if 'TPC Chat (Seg)' in df_final_escopo.columns and tpc_chat_medio > 0 else "--"
+                    with cc3: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>TPC Chat</div><div class='kpi-value'>{val_tpc_chat}</div><div style='font-size:11px;color:#6c757d;font-weight:bold;'>Meta: {META_TPC:.0f}s</div></div>", unsafe_allow_html=True)
+
+                with col_voz:
+                    st.markdown("##### 📞 Desempenho de Voz")
+                    cv1, cv2, cv3 = st.columns(3)
+                    with cv1: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Vol. Voz</div><div class='kpi-value'>{int(total_vol_voz):,}</div></div>", unsafe_allow_html=True)
+                    with cv2: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>TMA Voz</div><div class='kpi-value'>{tma_voz_medio:.1f}m</div></div>", unsafe_allow_html=True)
+                    val_tpc_voz = f"{tpc_voz_medio:.1f}s" if 'TPC Voz (Seg)' in df_final_escopo.columns and tpc_voz_medio > 0 else "--"
+                    with cv3: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>TPC Voz</div><div class='kpi-value'>{val_tpc_voz}</div><div style='font-size:11px;color:#6c757d;font-weight:bold;'>Meta: {META_TPC:.0f}s</div></div>", unsafe_allow_html=True)
 
                 st.markdown("---")
 
@@ -837,7 +849,8 @@ else:
                             st.plotly_chart(fig_ret, use_container_width=True)
 
                     with tab_graf_2:
-                        cx1, cx2, cx3, cx4 = st.columns(4)
+                        st.markdown("#### ⏱️ Escala e Aderência")
+                        cx1, cx2 = st.columns(2)
                         with cx1:
                             fig_ade = px.bar(df_chart_base.sort_values(by='Aderência (%)', ascending=True).head(10), x='Aderência (%)', y='Nome Exibição', orientation='h', title="⏱️ Aderência (Pausas)", color='Aderência (%)', color_continuous_scale='Reds_r', text='Aderência (%)')
                             fig_ade.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
@@ -850,16 +863,42 @@ else:
                             fig_conf.update_yaxes(autorange="reversed")
                             fig_conf.add_vline(x=META_CONFORMIDADE, line_dash="dash", line_color="green")
                             st.plotly_chart(fig_conf, use_container_width=True)
+                            
+                        st.markdown("---")
+                        st.markdown("#### 💬 Tempos de Chat (Ofensores)")
+                        cx3, cx4 = st.columns(2)
                         with cx3:
                             fig_tmach = px.bar(df_chart_base.sort_values(by='TMA Chat (Min)', ascending=False).head(10), x='TMA Chat (Min)', y='Nome Exibição', orientation='h', title="⏳ Maiores TMAs Chat", color='TMA Chat (Min)', color_continuous_scale='Oranges', text='TMA Chat (Min)')
                             fig_tmach.update_traces(texttemplate='%{text:.1f}m', textposition='auto')
                             fig_tmach.update_yaxes(autorange="reversed")
                             st.plotly_chart(fig_tmach, use_container_width=True)
                         with cx4:
+                            if 'TPC Chat (Seg)' in df_chart_base.columns and df_chart_base['TPC Chat (Seg)'].sum() > 0:
+                                fig_tpcch = px.bar(df_chart_base.sort_values(by='TPC Chat (Seg)', ascending=False).head(10), x='TPC Chat (Seg)', y='Nome Exibição', orientation='h', title="⏱️ Maiores TPCs Chat (Segundos)", color='TPC Chat (Seg)', color_continuous_scale='Oranges', text='TPC Chat (Seg)')
+                                fig_tpcch.update_traces(texttemplate='%{text:.1f}s', textposition='auto')
+                                fig_tpcch.update_yaxes(autorange="reversed")
+                                fig_tpcch.add_vline(x=META_TPC, line_dash="dash", line_color="green")
+                                st.plotly_chart(fig_tpcch, use_container_width=True)
+                            else:
+                                st.info("Gráfico de TPC Chat indisponível (Dados Zerados).")
+
+                        st.markdown("---")
+                        st.markdown("#### 📞 Tempos de Voz (Ofensores)")
+                        cx5, cx6 = st.columns(2)
+                        with cx5:
                             fig_tmavz = px.bar(df_chart_base.sort_values(by='TMA Voz (Min)', ascending=False).head(10), x='TMA Voz (Min)', y='Nome Exibição', orientation='h', title="⏳ Maiores TMAs Voz", color='TMA Voz (Min)', color_continuous_scale='Oranges', text='TMA Voz (Min)')
                             fig_tmavz.update_traces(texttemplate='%{text:.1f}m', textposition='auto')
                             fig_tmavz.update_yaxes(autorange="reversed")
                             st.plotly_chart(fig_tmavz, use_container_width=True)
+                        with cx6:
+                            if 'TPC Voz (Seg)' in df_chart_base.columns and df_chart_base['TPC Voz (Seg)'].sum() > 0:
+                                fig_tpcvz = px.bar(df_chart_base.sort_values(by='TPC Voz (Seg)', ascending=False).head(10), x='TPC Voz (Seg)', y='Nome Exibição', orientation='h', title="⏱️ Maiores TPCs Voz (Segundos)", color='TPC Voz (Seg)', color_continuous_scale='Oranges', text='TPC Voz (Seg)')
+                                fig_tpcvz.update_traces(texttemplate='%{text:.1f}s', textposition='auto')
+                                fig_tpcvz.update_yaxes(autorange="reversed")
+                                fig_tpcvz.add_vline(x=META_TPC, line_dash="dash", line_color="green")
+                                st.plotly_chart(fig_tpcvz, use_container_width=True)
+                            else:
+                                st.info("Gráfico de TPC Voz indisponível (Dados Zerados).")
 
                     with tab_graf_3:
                         cv1, cv2 = st.columns(2)
@@ -1007,7 +1046,7 @@ else:
                     with co1: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Chats Atendidos</div><div class='kpi-value'>{int(dados['Vol. Chat']) if pd.notna(dados['Vol. Chat']) else 0}</div></div>", unsafe_allow_html=True)
                     with co2: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Meu TMA Chat</div><div class='kpi-value'>{dados['TMA Chat (Min)']:.1f}m</div></div>", unsafe_allow_html=True)
                     
-                    val_tpc_chat = f"{dados['TPC Chat (Seg)']:.1f}s" if 'TPC Chat (Seg)' in df_periodo.columns and pd.notna(dados.get('TPC Chat (Seg)')) else "--"
+                    val_tpc_chat = f"{dados['TPC Chat (Seg)']:.1f}s" if 'TPC Chat (Seg)' in df_periodo.columns and pd.notna(dados.get('TPC Chat (Seg)')) and dados['TPC Chat (Seg)'] > 0 else "--"
                     with co3: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Meu TPC Chat</div><div class='kpi-value'>{val_tpc_chat}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_TPC:.0f}s</div></div>", unsafe_allow_html=True)
                     with co4: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
 
@@ -1015,7 +1054,7 @@ else:
                     with cv1: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
                     with cv2: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Meu TMA Voz</div><div class='kpi-value'>{dados['TMA Voz (Min)']:.1f}m</div></div>", unsafe_allow_html=True)
                     
-                    val_tpc_voz = f"{dados['TPC Voz (Seg)']:.1f}s" if 'TPC Voz (Seg)' in df_periodo.columns and pd.notna(dados.get('TPC Voz (Seg)')) else "--"
+                    val_tpc_voz = f"{dados['TPC Voz (Seg)']:.1f}s" if 'TPC Voz (Seg)' in df_periodo.columns and pd.notna(dados.get('TPC Voz (Seg)')) and dados['TPC Voz (Seg)'] > 0 else "--"
                     with cv3: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Meu TPC Voz</div><div class='kpi-value'>{val_tpc_voz}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_TPC:.0f}s</div></div>", unsafe_allow_html=True)
                     with cv4: pass
                 else:
