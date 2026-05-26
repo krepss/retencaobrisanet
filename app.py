@@ -256,12 +256,22 @@ def obter_dados_historicos(df, agente="Todos"):
     if df_hist.empty:
         return pd.DataFrame()
         
+    # Identifica o status dinâmico para anular as faltas de quem estava de férias/afastado
+    def get_status_hist(row):
+        if str(row.get('STATUS', 'ATIVO')).strip().upper() == 'AFASTADO': return 'Afastado'
+        mes_ferias = str(row.get('FÉRIAS 2026', '')).strip().upper()
+        if mes_ferias == str(row.get('text_mes', '')).strip().upper(): return 'Férias'
+        return 'Ativo'
+    
+    df_hist['Status_Dinamico_Hist'] = df_hist.apply(get_status_hist, axis=1)
+    if 'Faltas' in df_hist.columns:
+        df_hist['Faltas'] = df_hist.apply(lambda r: r['Faltas'] if r['Status_Dinamico_Hist'] == 'Ativo' else 0, axis=1)
+        
     meses_map = {m: i for i, m in enumerate(MESES, 1)}
     df_hist['Mes_Num'] = df_hist['text_mes'].map(meses_map)
     df_hist = df_hist.dropna(subset=['Mes_Num'])
     df_hist['Periodo_Ordem'] = df_hist['text_ano'].astype(str) + "-" + df_hist['Mes_Num'].astype(int).astype(str).str.zfill(2)
     
-    # Adicionando Faltas para acompanhamento histórico
     cols_sum = ['Total_Pesq_CSAT', 'Boas_Pesq_CSAT', 'Total_Pesq_IR', 'Sim_Pesq_IR', 'RT geral valido', 'RT geral calculado', 'Faltas']
     cols_mean = ['Aderência (%)', 'Conformidade (%)', 'Taxa_Retencao_Original']
     
@@ -779,7 +789,9 @@ else:
                 
                 df_calculado['% Retenção'] = df_calculado['Taxa_Retencao_Original'].fillna(0) if 'Taxa_Retencao_Original' in df_calculado.columns else 0.0
                 df_calculado['% Cancelamento'] = df_calculado.apply(lambda r: 100 - r['% Retenção'] if r['% Retenção'] > 0 else 0.0, axis=1)
-                df_calculado['Faltas'] = df_calculado['Faltas'].fillna(0) if 'Faltas' in df_calculado.columns else 0
+                
+                # Zera as faltas de quem não está ativo para não bugar o painel se a visão for "Todos"
+                df_calculado['Faltas'] = df_calculado.apply(lambda r: r.get('Faltas', 0) if r.get('Status_Dinamico') == 'Ativo' else 0, axis=1)
 
                 df_calculado = df_calculado[
                     (df_calculado['Aderência (%)'] > 0) | 
@@ -800,6 +812,7 @@ else:
                 lista_detratores_faltas = df_ativos_alertas[df_ativos_alertas['Faltas'] > 0]
                 
                 total_desvios_qualidade = len(lista_detratores_csat) + len(lista_detratores_ir)
+                total_faltas_alertas = int(lista_detratores_faltas['Faltas'].sum()) if not lista_detratores_faltas.empty else 0
 
                 c_a1, c_a2, c_a3, c_a4, c_a5 = st.columns(5)
                 with c_a1:
@@ -816,7 +829,7 @@ else:
                     with st.expander(f"⏱️ Aderência (Pausas): {len(lista_detratores_ade)} desvios"):
                         for _, row in lista_detratores_ade.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#fffaf5;border-color:#feb2b2;color:#c53030;'>⏱️ <b>{row['Nome Exibição']}</b> | Ade: <b>{row['Aderência (%)']:.1f}%</b></div>", unsafe_allow_html=True)
                 with c_a5:
-                    with st.expander(f"❌ Faltas: {len(lista_detratores_faltas)} registros"):
+                    with st.expander(f"❌ Faltas: {total_faltas_alertas} ausências"):
                         for _, row in lista_detratores_faltas.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#fff5f5;border-color:#feb2b2;color:#c53030;'>❌ <b>{row['Nome Exibição']}</b> | Faltas: <b>{int(row['Faltas'])}</b></div>", unsafe_allow_html=True)
 
                 st.markdown("### 👥 Escopo da Análise")
@@ -895,7 +908,7 @@ else:
                     metrica_escolhida = st.selectbox("Selecione o indicador para acompanhar a evolução ao longo do tempo:", indicadores_hist)
                     
                     fig_hist = px.line(df_hist_plot, x='Mês/Ano', y=metrica_escolhida, markers=True, text=metrica_escolhida, title=f"Evolução de {metrica_escolhida} - {filtro_agente}")
-                    fig_hist.update_traces(textposition="top center", texttemplate='%{text:.1f}' if metrica_escolhida == 'Faltas' else '%{text:.1f}%', line=dict(width=4), marker=dict(size=10))
+                    fig_hist.update_traces(textposition="top center", texttemplate='%{text:.0f}' if metrica_escolhida == 'Faltas' else '%{text:.1f}%', line=dict(width=4), marker=dict(size=10))
                     
                     meta_valor = 0
                     if "CSAT" in metrica_escolhida: meta_valor = META_CSAT
@@ -1093,7 +1106,11 @@ else:
                     my_csat = (dados['Boas_Pesq_CSAT'] / dados['Total_Pesq_CSAT'] * 100) if tem_colunas_novas and dados['Total_Pesq_CSAT'] > 0 else 0.0
                     my_ir = (dados['Sim_Pesq_IR'] / dados['Total_Pesq_IR'] * 100) if tem_colunas_novas and dados['Total_Pesq_IR'] > 0 else 0.0
                     my_tx_ret = dados['Taxa_Retencao_Original'] if 'Taxa_Retencao_Original' in dados else 0.0
-                    minhas_faltas = int(dados['Faltas']) if 'Faltas' in df_periodo.columns and pd.notna(dados.get('Faltas')) else 0
+                    
+                    status_agente_mes = 'Ativo'
+                    if mes_ferias_cadastrado.upper() == mes_view.upper() and mes_ferias_cadastrado != "Não programadas": status_agente_mes = 'Férias'
+                    elif str(meus_dados_cadastrais.get('STATUS', '')).strip().upper() == 'AFASTADO': status_agente_mes = 'Afastado'
+                    minhas_faltas = int(dados['Faltas']) if 'Faltas' in df_periodo.columns and pd.notna(dados.get('Faltas')) and status_agente_mes == 'Ativo' else 0
                     
                     df_ranking = df_periodo.copy()
                     rank_display = "N/A"
@@ -1133,8 +1150,8 @@ else:
                     ca1, ca2, ca3, ca4, ca5 = st.columns(5)
                     with ca1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu CSAT</div><div class='kpi-value'>{my_csat:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
                     with ca2: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu Índice IR</div><div class='kpi-value'>{my_ir:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_IR:.0f}%</div></div>", unsafe_allow_html=True)
-                    with ca3: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>Conformidade</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
-                    with ca4: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>Aderência</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
+                    with ca3: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>Conformidade (Escala)</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
+                    with ca4: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>Aderência (Pausas)</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
                     with ca5: st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>Minhas Faltas</div><div class='kpi-value' style='color:#dc3545;'>{minhas_faltas}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>No Período</div></div>", unsafe_allow_html=True)
 
                     st.markdown("### 🎧 Produtividade")
@@ -1153,7 +1170,6 @@ else:
                     with cv4: pass
 
                     st.markdown("---")
-                    
                     st.markdown("### 📈 Minha Evolução Histórica")
                     df_completo_agente = df_completo[df_completo[col_email_periodo].str.strip().str.lower() == st.session_state.user_email.strip().lower()].copy()
                     if not df_completo_agente.empty:
@@ -1165,7 +1181,7 @@ else:
                             metrica_escolhida_ag = st.selectbox("Selecione o indicador para acompanhar o seu progresso:", indicadores_hist_ag, key="hist_ag")
                             
                             fig_hist_ag = px.line(df_hist_plot_ag, x='Mês/Ano', y=metrica_escolhida_ag, markers=True, text=metrica_escolhida_ag, title=f"Minha Evolução: {metrica_escolhida_ag}")
-                            fig_hist_ag.update_traces(textposition="top center", texttemplate='%{text:.1f}' if metrica_escolhida_ag == 'Faltas' else '%{text:.1f}%', line=dict(width=4), marker=dict(size=10))
+                            fig_hist_ag.update_traces(textposition="top center", texttemplate='%{text:.0f}' if metrica_escolhida_ag == 'Faltas' else '%{text:.1f}%', line=dict(width=4), marker=dict(size=10))
                             
                             meta_valor_ag = 0
                             if "CSAT" in metrica_escolhida_ag: meta_valor_ag = META_CSAT
