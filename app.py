@@ -216,7 +216,6 @@ def ms_para_minutos(ms):
     if pd.isna(ms): return 0.0
     return ms / 1000 / 60
 
-# NOVO: Função para manter o TPC em segundos de forma correta
 def ms_para_segundos(ms):
     if pd.isna(ms): return 0.0
     return ms / 1000
@@ -581,7 +580,6 @@ else:
                     st.rerun()
             except Exception: st.warning("Base de usuários indisponível.")
 
-        # --- O SEGREDO DO SUCESSO: LEITOR UNIVERSAL ROBUSTO NA ABA UPLOAD ---
         with aba_upload:
             st.header("⚙️ Central de Consolidação de Relatórios")
             
@@ -596,7 +594,6 @@ else:
                 for arquivo in arquivos_carregados:
                     try:
                         df_header = ler_csv_upload_seguro(arquivo, nrows=0)
-                        
                         cols_upper = [str(c).strip().upper() for c in df_header.columns]
                         
                         if any('ADER' in c for c in cols_upper) and any('CONFOR' in c for c in cols_upper):
@@ -644,9 +641,9 @@ else:
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
                         df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
                         
-                        # --- CAPTURA DE TPC PARA CHAT ---
+                        # --- CAPTURA DE TPC CHAT ---
                         df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
-                        col_tpc_chat = next((c for c in df_chat.columns if 'TPC' in str(c).upper() or 'PÓS' in str(c).upper() or 'POS' in str(c).upper() or 'TRABALHO' in str(c).upper()), None)
+                        col_tpc_chat = next((c for c in df_chat.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
                         agg_chat = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
                         if col_tpc_chat: agg_chat[col_tpc_chat] = 'mean'
                         
@@ -657,9 +654,9 @@ else:
                             df_chat_agg.rename(columns={col_tpc_chat: 'TPC Chat (ms)'}, inplace=True)
                             df_chat_agg['TPC Chat (Seg)'] = df_chat_agg['TPC Chat (ms)'].apply(ms_para_segundos)
                         
-                        # --- CAPTURA DE TPC PARA VOZ ---
+                        # --- CAPTURA DE TPC VOZ ---
                         df_voz['Chave_Nome'] = df_voz['Nome do agente'].astype(str).str.strip().str.upper()
-                        col_tpc_voz = next((c for c in df_voz.columns if 'TPC' in str(c).upper() or 'PÓS' in str(c).upper() or 'POS' in str(c).upper() or 'TRABALHO' in str(c).upper()), None)
+                        col_tpc_voz = next((c for c in df_voz.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
                         agg_voz = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
                         if col_tpc_voz: agg_voz[col_tpc_voz] = 'mean'
                         
@@ -683,9 +680,30 @@ else:
                         df_novo['Mês'] = mes_up
                         df_novo['Ano'] = str(ano_up)
                         
-                        enviar_para_github("dados_consolidados_master.csv", df_novo.to_csv(index=False))
+                        # --- SOLUÇÃO: CONCATENAR COM O HISTÓRICO EM VEZ DE SOBRESCREVER ---
+                        if 'TPC Chat (Seg)' not in df_novo.columns: df_novo['TPC Chat (Seg)'] = 0.0
+                        if 'TPC Voz (Seg)' not in df_novo.columns: df_novo['TPC Voz (Seg)'] = 0.0
+                        
+                        try:
+                            df_master_existente = ler_csv_via_api_github("dados_consolidados_master.csv")
+                        except Exception:
+                            df_master_existente = pd.DataFrame()
+                            
+                        if not df_master_existente.empty:
+                            df_master_existente['M_temp'] = df_master_existente['Mês'].astype(str).str.strip().str.title()
+                            df_master_existente['A_temp'] = df_master_existente['Ano'].astype(str).str.strip()
+                            mask_diferente = ~((df_master_existente['M_temp'] == mes_up) & (df_master_existente['A_temp'] == str(ano_up)))
+                            df_master_existente = df_master_existente[mask_diferente].drop(columns=['M_temp', 'A_temp', 'text_mes', 'text_ano'], errors='ignore')
+                            df_final_salvar = pd.concat([df_master_existente, df_novo], ignore_index=True)
+                        else:
+                            df_final_salvar = df_novo
+                            
+                        if 'TPC Chat (Seg)' not in df_final_salvar.columns: df_final_salvar['TPC Chat (Seg)'] = 0.0
+                        if 'TPC Voz (Seg)' not in df_final_salvar.columns: df_final_salvar['TPC Voz (Seg)'] = 0.0
+                        
+                        enviar_para_github("dados_consolidados_master.csv", df_final_salvar.to_csv(index=False))
                         st.cache_data.clear()
-                        st.success("Base Mestre atualizada com sucesso!")
+                        st.success(f"Relatórios de {mes_up}/{ano_up} integrados ao Histórico Geral com sucesso!")
                         time.sleep(0.5)
                         st.rerun()
                     except Exception as e: st.error(f"Erro no processamento: {e}")
@@ -989,7 +1007,7 @@ else:
                     with co1: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Chats Atendidos</div><div class='kpi-value'>{int(dados['Vol. Chat']) if pd.notna(dados['Vol. Chat']) else 0}</div></div>", unsafe_allow_html=True)
                     with co2: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Meu TMA Chat</div><div class='kpi-value'>{dados['TMA Chat (Min)']:.1f}m</div></div>", unsafe_allow_html=True)
                     
-                    val_tpc_chat = f"{dados['TPC Chat (Seg)']:.1f}s" if 'TPC Chat (Seg)' in df_periodo.columns else "--"
+                    val_tpc_chat = f"{dados['TPC Chat (Seg)']:.1f}s" if 'TPC Chat (Seg)' in df_periodo.columns and pd.notna(dados.get('TPC Chat (Seg)')) else "--"
                     with co3: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Meu TPC Chat</div><div class='kpi-value'>{val_tpc_chat}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_TPC:.0f}s</div></div>", unsafe_allow_html=True)
                     with co4: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
 
@@ -997,7 +1015,7 @@ else:
                     with cv1: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
                     with cv2: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Meu TMA Voz</div><div class='kpi-value'>{dados['TMA Voz (Min)']:.1f}m</div></div>", unsafe_allow_html=True)
                     
-                    val_tpc_voz = f"{dados['TPC Voz (Seg)']:.1f}s" if 'TPC Voz (Seg)' in df_periodo.columns else "--"
+                    val_tpc_voz = f"{dados['TPC Voz (Seg)']:.1f}s" if 'TPC Voz (Seg)' in df_periodo.columns and pd.notna(dados.get('TPC Voz (Seg)')) else "--"
                     with cv3: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Meu TPC Voz</div><div class='kpi-value'>{val_tpc_voz}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_TPC:.0f}s</div></div>", unsafe_allow_html=True)
                     with cv4: pass
                 else:
