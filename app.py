@@ -642,16 +642,19 @@ else:
             ano_up = col_a.selectbox("Ano de competência das planilhas:", ANOS)
             st.markdown("---")
             
-            arquivos_carregados = st.file_uploader("Arraste e solte os 5 arquivos CSV aqui de uma vez", type=["csv"], accept_multiple_files=True)
-            relatorios_identificados = {"Aderência e Conformidade": None, "Pesquisa (CSAT/IR)": None, "Chat": None, "Voz": None, "Retenção": None}
+            # ATUALIZADO PARA 6 ARQUIVOS
+            arquivos_carregados = st.file_uploader("Arraste e solte os 6 arquivos CSV aqui de uma vez", type=["csv"], accept_multiple_files=True)
+            relatorios_identificados = {"Aderência e Conformidade": None, "Faltas Diárias": None, "Pesquisa (CSAT/IR)": None, "Chat": None, "Voz": None, "Retenção": None}
             if arquivos_carregados:
                 for arquivo in arquivos_carregados:
                     try:
                         df_header = ler_csv_upload_seguro(arquivo, nrows=0)
                         cols_upper = [str(c).strip().upper() for c in df_header.columns]
                         
-                        if any('ADER' in c for c in cols_upper) and any('CONFOR' in c for c in cols_upper):
+                        if any('ADER' in c for c in cols_upper) and any('CONFOR' in c for c in cols_upper) and not any('SINALIZADOR' in c for c in cols_upper):
                             relatorios_identificados["Aderência e Conformidade"] = arquivo
+                        elif any('SINALIZADOR' in c for c in cols_upper) and any('DATA' in c for c in cols_upper):
+                            relatorios_identificados["Faltas Diárias"] = arquivo
                         elif any('CSAT' in c for c in cols_upper) and any('ATENDENTE' in c for c in cols_upper):
                             relatorios_identificados["Pesquisa (CSAT/IR)"] = arquivo
                         elif any('ATENDIDAS' in c for c in cols_upper) and any('NOME DO AGENTE' in c for c in cols_upper):
@@ -662,47 +665,56 @@ else:
                     except Exception: pass
 
             st.markdown("### 📋 Status da Validação")
-            c_chk1, c_chk2, c_chk3, c_chk4, c_chk5 = st.columns(5)
-            with c_chk1: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Aderência e Conformidade'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>1. Aderência & Conformidade</b></div>", unsafe_allow_html=True)
-            with c_chk2: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Pesquisa (CSAT/IR)'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>2. Pesquisas</b></div>", unsafe_allow_html=True)
-            with c_chk3: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Chat'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>3. Chat</b></div>", unsafe_allow_html=True)
-            with c_chk4: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Voz'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>4. Voz</b></div>", unsafe_allow_html=True)
-            with c_chk5: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Retenção'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>5. Retenção</b></div>", unsafe_allow_html=True)
+            c_chk1, c_chk2, c_chk3, c_chk4, c_chk5, c_chk6 = st.columns(6)
+            with c_chk1: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Aderência e Conformidade'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>1. Ade & Conf</b></div>", unsafe_allow_html=True)
+            with c_chk2: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Faltas Diárias'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>2. Faltas WFM</b></div>", unsafe_allow_html=True)
+            with c_chk3: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Pesquisa (CSAT/IR)'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>3. Pesquisas</b></div>", unsafe_allow_html=True)
+            with c_chk4: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Chat'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>4. Chat</b></div>", unsafe_allow_html=True)
+            with c_chk5: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Voz'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>5. Voz</b></div>", unsafe_allow_html=True)
+            with c_chk6: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Retenção'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>6. Retenção</b></div>", unsafe_allow_html=True)
 
             if all(relatorios_identificados.values()) and st.button("🚀 Processar e Atualizar Base Mestre AGORA", type="primary", use_container_width=True):
                 with st.spinner("Consolidando..."):
                     try:
                         df_perf = ler_csv_upload_seguro(relatorios_identificados["Aderência e Conformidade"])
+                        df_faltas_diarias = ler_csv_upload_seguro(relatorios_identificados["Faltas Diárias"])
                         df_ret = ler_csv_upload_seguro(relatorios_identificados["Retenção"])
                         df_chat = ler_csv_upload_seguro(relatorios_identificados["Chat"])
                         df_voz = ler_csv_upload_seguro(relatorios_identificados["Voz"])
                         df_pesq = ler_csv_upload_seguro(relatorios_identificados["Pesquisa (CSAT/IR)"])
                         df_users = ler_csv_via_api_github("dados_usuarios.csv")
                         
+                        col_nome = 'COLABORADOR' if 'COLABORADOR' in df_users.columns else 'Nome'
+                        df_users['Chave_Nome'] = df_users[col_nome].astype(str).str.strip().str.upper()
+
+                        # PROCESSAMENTO ADERÊNCIA E CONFORMIDADE
                         col_ade = next((c for c in df_perf.columns if 'ADER' in str(c).upper()), None)
                         col_conf = next((c for c in df_perf.columns if 'CONFOR' in str(c).upper()), None)
                         col_agente = next((c for c in df_perf.columns if 'AGENTE' in str(c).upper()), None)
                         
                         df_perf['Aderência (%)'] = df_perf[col_ade].apply(limpar_porcentagem)
                         df_perf['Conformidade (%)'] = df_perf[col_conf].apply(limpar_porcentagem)
-                        
-                        df_perf['Faltas'] = (df_perf['Conformidade (%)'] == 0.0).astype(int)
                         df_perf['Chave_Nome'] = df_perf[col_agente].astype(str).str.strip().str.upper()
+
+                        # NOVO PROCESSAMENTO DE FALTAS DIÁRIAS (WFM)
+                        col_agente_falta = next((c for c in df_faltas_diarias.columns if 'AGENTE' in str(c).upper()), None)
+                        col_conf_falta = next((c for c in df_faltas_diarias.columns if 'CONFOR' in str(c).upper()), None)
                         
-                        df_perf_agg = df_perf.groupby('Chave_Nome').agg({
-                            'Aderência (%)': 'mean',
-                            'Conformidade (%)': 'mean',
-                            'Faltas': 'sum'
-                        }).reset_index()
+                        df_faltas_diarias['Chave_Nome'] = df_faltas_diarias[col_agente_falta].astype(str).str.strip().str.upper()
+                        # Transforma a conformidade diária em número e marca 1 para falta (quando for 0.0)
+                        df_faltas_diarias['Valor_Conformidade'] = pd.to_numeric(df_faltas_diarias[col_conf_falta].astype(str).str.replace(',', '.'), errors='coerce')
+                        df_faltas_diarias['Falta_Dia'] = (df_faltas_diarias['Valor_Conformidade'] == 0.0).astype(int)
                         
-                        col_nome = 'COLABORADOR' if 'COLABORADOR' in df_users.columns else 'Nome'
-                        df_users['Chave_Nome'] = df_users[col_nome].astype(str).str.strip().str.upper()
+                        df_faltas_agg = df_faltas_diarias.groupby('Chave_Nome').agg({'Falta_Dia': 'sum'}).reset_index()
+                        df_faltas_agg.rename(columns={'Falta_Dia': 'Faltas'}, inplace=True)
                         
+                        # PROCESSAMENTO RETENÇÃO
                         df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
                         df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
                         df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
                         
+                        # PROCESSAMENTO CHAT
                         df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
                         col_tpc_chat = next((c for c in df_chat.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
                         agg_chat = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
@@ -715,6 +727,7 @@ else:
                             df_chat_agg.rename(columns={col_tpc_chat: 'TPC Chat (ms)'}, inplace=True)
                             df_chat_agg['TPC Chat (Seg)'] = df_chat_agg['TPC Chat (ms)'].apply(ms_para_segundos)
                         
+                        # PROCESSAMENTO VOZ
                         df_voz['Chave_Nome'] = df_voz['Nome do agente'].astype(str).str.strip().str.upper()
                         col_tpc_voz = next((c for c in df_voz.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
                         agg_voz = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
@@ -727,11 +740,16 @@ else:
                             df_voz_agg.rename(columns={col_tpc_voz: 'TPC Voz (ms)'}, inplace=True)
                             df_voz_agg['TPC Voz (Seg)'] = df_voz_agg['TPC Voz (ms)'].apply(ms_para_segundos)
                         
+                        # PROCESSAMENTO PESQUISA
                         df_pesq['Chave_Nome'] = df_pesq['Atendente'].astype(str).str.strip().str.upper()
                         df_pesq['CSAT_Num'] = pd.to_numeric(df_pesq['CSAT'], errors='coerce')
                         df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(Total_Pesq_CSAT=('CSAT_Num', 'count'), Boas_Pesq_CSAT=('CSAT_Num', lambda x: (x >= 4).sum()), Total_Pesq_IR=('IR', 'count'), Sim_Pesq_IR=('IR', lambda x: (x.astype(str).str.strip().str.upper() == 'SIM').sum())).reset_index()
 
-                        df_novo = pd.merge(df_users, df_perf_agg[['Chave_Nome', 'Aderência (%)', 'Conformidade (%)', 'Faltas']], on='Chave_Nome', how='left')
+                        # MERGE FINAL
+                        df_novo = pd.merge(df_users, df_perf[['Chave_Nome', 'Aderência (%)', 'Conformidade (%)']], on='Chave_Nome', how='left')
+                        # Junta a contagem de faltas do arquivo diário
+                        df_novo = pd.merge(df_novo, df_faltas_agg[['Chave_Nome', 'Faltas']], on='Chave_Nome', how='left')
+                        
                         df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculado', 'Taxa_Retencao_Original']], on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_chat_agg, on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_voz_agg, on='Chave_Nome', how='left')
@@ -831,7 +849,6 @@ else:
 
                 st.markdown("---")
                 
-                # --- NOVO: HISTÓRICO GLOBAL DE ABSENTEÍSMO PARA O GESTOR ---
                 st.subheader("📅 Histórico de Absenteísmo (Quem faltou e quando)")
                 
                 if 'Faltas' in df_completo.columns:
@@ -932,7 +949,6 @@ else:
 
                 st.markdown("---")
                 
-                # --- GRÁFICO HISTÓRICO GESTOR ---
                 st.subheader("📈 Análise de Evolução Histórica")
                 df_hist_plot = obter_dados_historicos(df_completo, filtro_agente)
                 
@@ -1102,7 +1118,6 @@ else:
             primeiro_nome = st.session_state.user_nome.split()[0]
             st.markdown(f"<h2>👋 Olá, {primeiro_nome}!</h2>", unsafe_allow_html=True)
             
-            # --- ALERTA DE FALTAS PARA O AGENTE ---
             col_email_periodo = 'E-MAIL' if 'E-MAIL' in df_periodo.columns else 'E-mail'
             df_completo_agente = df_completo[df_completo[col_email_periodo].str.strip().str.lower() == st.session_state.user_email.strip().lower()].copy()
             
