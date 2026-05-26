@@ -256,7 +256,6 @@ def obter_dados_historicos(df, agente="Todos"):
     if df_hist.empty:
         return pd.DataFrame()
         
-    # Identifica o status dinâmico para anular as faltas de quem estava de férias/afastado
     def get_status_hist(row):
         if str(row.get('STATUS', 'ATIVO')).strip().upper() == 'AFASTADO': return 'Afastado'
         mes_ferias = str(row.get('FÉRIAS 2026', '')).strip().upper()
@@ -687,7 +686,6 @@ else:
                         df_perf['Aderência (%)'] = df_perf[col_ade].apply(limpar_porcentagem)
                         df_perf['Conformidade (%)'] = df_perf[col_conf].apply(limpar_porcentagem)
                         
-                        # NOVA LÓGICA DE FALTAS
                         df_perf['Faltas'] = (df_perf['Conformidade (%)'] == 0.0).astype(int)
                         df_perf['Chave_Nome'] = df_perf[col_agente].astype(str).str.strip().str.upper()
                         
@@ -790,7 +788,6 @@ else:
                 df_calculado['% Retenção'] = df_calculado['Taxa_Retencao_Original'].fillna(0) if 'Taxa_Retencao_Original' in df_calculado.columns else 0.0
                 df_calculado['% Cancelamento'] = df_calculado.apply(lambda r: 100 - r['% Retenção'] if r['% Retenção'] > 0 else 0.0, axis=1)
                 
-                # Zera as faltas de quem não está ativo para não bugar o painel se a visão for "Todos"
                 df_calculado['Faltas'] = df_calculado.apply(lambda r: r.get('Faltas', 0) if r.get('Status_Dinamico') == 'Ativo' else 0, axis=1)
 
                 df_calculado = df_calculado[
@@ -832,6 +829,42 @@ else:
                     with st.expander(f"❌ Faltas: {total_faltas_alertas} ausências"):
                         for _, row in lista_detratores_faltas.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#fff5f5;border-color:#feb2b2;color:#c53030;'>❌ <b>{row['Nome Exibição']}</b> | Faltas: <b>{int(row['Faltas'])}</b></div>", unsafe_allow_html=True)
 
+                st.markdown("---")
+                
+                # --- NOVO: HISTÓRICO GLOBAL DE ABSENTEÍSMO PARA O GESTOR ---
+                st.subheader("📅 Histórico de Absenteísmo (Quem faltou e quando)")
+                
+                if 'Faltas' in df_completo.columns:
+                    df_hist_faltas = df_completo.copy()
+                    
+                    def get_status_global(row):
+                        if str(row.get('STATUS', 'ATIVO')).strip().upper() == 'AFASTADO': return 'Afastado'
+                        mes_ferias = str(row.get('FÉRIAS 2026', '')).strip().upper()
+                        if mes_ferias == str(row.get('text_mes', row.get('Mês', ''))).strip().upper(): return 'Férias'
+                        return 'Ativo'
+                        
+                    df_hist_faltas['Status_Dinamico'] = df_hist_faltas.apply(get_status_global, axis=1)
+                    df_hist_faltas['Faltas_Reais'] = df_hist_faltas.apply(lambda r: pd.to_numeric(r.get('Faltas', 0), errors='coerce') if r['Status_Dinamico'] == 'Ativo' else 0, axis=1).fillna(0)
+                    
+                    df_faltou = df_hist_faltas[df_hist_faltas['Faltas_Reais'] > 0].copy()
+                    if not df_faltou.empty:
+                        df_faltou['Período'] = df_faltou['Mês'].astype(str) + "/" + df_faltou['Ano'].astype(str)
+                        df_faltou_grp = df_faltou.groupby('Nome Exibição').agg(
+                            Total_Faltas=('Faltas_Reais', 'sum'),
+                            Meses_Falta=('Período', lambda x: ", ".join(x))
+                        ).reset_index()
+                        
+                        df_faltou_grp.rename(columns={'Nome Exibição': 'Operador', 'Total_Faltas': 'Total de Faltas', 'Meses_Falta': 'Meses com Falta'}, inplace=True)
+                        df_faltou_grp = df_faltou_grp.sort_values(by='Total de Faltas', ascending=False)
+                        
+                        st.dataframe(df_faltou_grp.style.format({'Total de Faltas': '{:.0f}'}), use_container_width=True)
+                    else:
+                        st.success("🎉 Nenhuma falta registrada no histórico da operação (entre os ativos)!")
+                else:
+                    st.info("O histórico de faltas será construído conforme os próximos meses forem processados.")
+
+                st.markdown("---")
+                
                 st.markdown("### 👥 Escopo da Análise")
                 agentes_lista = ["Todos"] + list(df_calculado['Nome Exibição'].dropna().unique())
                 filtro_agente = st.selectbox("Selecionar foco nominal:", agentes_lista)
@@ -1068,6 +1101,26 @@ else:
             
             primeiro_nome = st.session_state.user_nome.split()[0]
             st.markdown(f"<h2>👋 Olá, {primeiro_nome}!</h2>", unsafe_allow_html=True)
+            
+            # --- ALERTA DE FALTAS PARA O AGENTE ---
+            col_email_periodo = 'E-MAIL' if 'E-MAIL' in df_periodo.columns else 'E-mail'
+            df_completo_agente = df_completo[df_completo[col_email_periodo].str.strip().str.lower() == st.session_state.user_email.strip().lower()].copy()
+            
+            if not df_completo_agente.empty and 'Faltas' in df_completo_agente.columns:
+                def get_status_global_ag(row):
+                    if str(row.get('STATUS', 'ATIVO')).strip().upper() == 'AFASTADO': return 'Afastado'
+                    mes_f = str(row.get('FÉRIAS 2026', '')).strip().upper()
+                    if mes_f == str(row.get('Mês', '')).strip().upper(): return 'Férias'
+                    return 'Ativo'
+                
+                df_completo_agente['Status_Dinamico'] = df_completo_agente.apply(get_status_global_ag, axis=1)
+                df_completo_agente['Faltas_Reais'] = df_completo_agente.apply(lambda r: pd.to_numeric(r.get('Faltas', 0), errors='coerce') if r['Status_Dinamico'] == 'Ativo' else 0, axis=1).fillna(0)
+                df_faltou_ag = df_completo_agente[df_completo_agente['Faltas_Reais'] > 0]
+                
+                if not df_faltou_ag.empty:
+                    meses_falta_ag = ", ".join((df_faltou_ag['Mês'].astype(str) + "/" + df_faltou_ag['Ano'].astype(str)).tolist())
+                    st.markdown(f"<div class='detractor-box' style='background-color:#fff5f5;border-color:#feb2b2;color:#c53030;'>⚠️ <b>Atenção:</b> Você possui registro de falta(s) no seu histórico (<b>{meses_falta_ag}</b>). Mantenha sua aderência e presença em dia!</div>", unsafe_allow_html=True)
+            
             st.markdown("---")
 
             aba_desempenho, aba_ferias, aba_wiki, aba_conta = st.tabs([
@@ -1097,7 +1150,6 @@ else:
                 with c_info3:
                     st.markdown(f"<div class='info-card'><div class='info-title'>Tempo de Empresa</div><div class='info-data'>{tempo_empresa}</div></div>", unsafe_allow_html=True)
 
-                col_email_periodo = 'E-MAIL' if 'E-MAIL' in df_periodo.columns else 'E-mail'
                 meus_dados = df_periodo[df_periodo[col_email_periodo].str.strip().str.lower() == st.session_state.user_email.strip().lower()]
                 
                 if not meus_dados.empty:
@@ -1171,7 +1223,6 @@ else:
 
                     st.markdown("---")
                     st.markdown("### 📈 Minha Evolução Histórica")
-                    df_completo_agente = df_completo[df_completo[col_email_periodo].str.strip().str.lower() == st.session_state.user_email.strip().lower()].copy()
                     if not df_completo_agente.empty:
                         df_completo_agente['Nome Exibição'] = "Eu"
                         df_hist_plot_ag = obter_dados_historicos(df_completo_agente, "Eu")
