@@ -170,6 +170,16 @@ if not st.session_state.logged_in:
 # ==========================================
 # FUNÇÕES DE LEITURA E GRAVAÇÃO VIA API GITHUB E UTILITÁRIAS
 # ==========================================
+
+# 🚀 NOVA FUNÇÃO BLINDADA: Lê arquivos locais (Uploads) com dupla checagem de Encoding (ANSI e UTF-8)
+def ler_csv_upload_seguro(arquivo, nrows=None):
+    try:
+        arquivo.seek(0)
+        return pd.read_csv(arquivo, nrows=nrows, sep=None, engine='python', encoding='utf-8')
+    except Exception:
+        arquivo.seek(0)
+        return pd.read_csv(arquivo, nrows=nrows, sep=None, engine='python', encoding='latin1')
+
 def ler_csv_via_api_github(nome_arquivo):
     g = Github(st.secrets["GITHUB_TOKEN"])
     repo = g.get_repo(st.secrets["GITHUB_REPO"])
@@ -293,7 +303,7 @@ if not st.session_state.logged_in:
         
         with aba_novo:
             with st.form("form_novo_acesso"):
-                st.markdown("#### Criar a minha senha")
+                st.markdown("#### Criar minha senha")
                 st.info("Insira o seu e-mail corporativo e escolha uma senha forte para acessar o sistema.")
                 email_novo = st.text_input("Seu E-mail corporativo")
                 senha_nova = st.text_input("Crie uma Senha", type="password")
@@ -616,7 +626,7 @@ else:
             if arquivos_carregados:
                 for arquivo in arquivos_carregados:
                     try:
-                        df_header = pd.read_csv(arquivo, nrows=0, sep=None, engine='python')
+                        df_header = ler_csv_upload_seguro(arquivo, nrows=0)
                         cols = [c.strip() for c in df_header.columns]
                         arquivo.seek(0)
                         if 'Aderência (%)' in cols and 'Conformidade (%)' in cols and 'Agente' in cols: relatorios_identificados["Aderência e Conformidade"] = arquivo
@@ -638,11 +648,11 @@ else:
             if all(relatorios_identificados.values()) and st.button("🚀 Processar e Atualizar Base Mestre AGORA", type="primary", use_container_width=True):
                 with st.spinner("Consolidando..."):
                     try:
-                        df_perf = pd.read_csv(relatorios_identificados["Aderência e Conformidade"], sep=None, engine='python')
-                        df_ret = pd.read_csv(relatorios_identificados["Retenção"], sep=None, engine='python')
-                        df_chat = pd.read_csv(relatorios_identificados["Chat"], sep=None, engine='python')
-                        df_voz = pd.read_csv(relatorios_identificados["Voz"], sep=None, engine='python')
-                        df_pesq = pd.read_csv(relatorios_identificados["Pesquisa (CSAT/IR)"], sep=None, engine='python')
+                        df_perf = ler_csv_upload_seguro(relatorios_identificados["Aderência e Conformidade"])
+                        df_ret = ler_csv_upload_seguro(relatorios_identificados["Retenção"])
+                        df_chat = ler_csv_upload_seguro(relatorios_identificados["Chat"])
+                        df_voz = ler_csv_upload_seguro(relatorios_identificados["Voz"])
+                        df_pesq = ler_csv_upload_seguro(relatorios_identificados["Pesquisa (CSAT/IR)"])
                         df_users = ler_csv_via_api_github("dados_usuarios.csv")
                         
                         df_perf['Aderência (%)'] = df_perf['Aderência (%)'].apply(limpar_porcentagem)
@@ -895,10 +905,10 @@ else:
             st.markdown("---")
 
             aba_desempenho, aba_ferias, aba_wiki, aba_conta = st.tabs([
-                "📊 O Meu Desempenho", 
-                "🌴 As Minhas Férias", 
+                "📊 Meu Desempenho", 
+                "🌴 Minhas Férias", 
                 "📚 Base de Conhecimento", 
-                "⚙️ A Minha Conta"
+                "⚙️ Minha Conta"
             ])
 
             with aba_desempenho:
@@ -961,22 +971,22 @@ else:
                             
                     st.markdown(f"""
                         <div style='background-color: #ffffff; border: 1px solid #e9ecef; border-left: 5px solid {cor_rank}; padding: 15px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0px 2px 5px rgba(0,0,0,0.02);'>
-                            <h4 style='margin: 0; color: #6c757d; font-size: 13px; text-transform: uppercase;'>O Seu Ranking na Equipe (Retenção)</h4>
+                            <h4 style='margin: 0; color: #6c757d; font-size: 13px; text-transform: uppercase;'>Seu Ranking na Equipe (Retenção)</h4>
                             <p style='margin: 5px 0 0 0; color: #343a40; font-size: 18px;'>{rank_display}</p>
                         </div>
                     """, unsafe_allow_html=True)
                     
                     st.markdown("### ⭐ Qualidade e Processos")
                     ca1, ca2, ca3, ca4 = st.columns(4)
-                    with ca1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>O Meu CSAT</div><div class='kpi-value'>{my_csat:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
-                    with ca2: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>O Meu Índice IR</div><div class='kpi-value'>{my_ir:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_IR:.0f}%</div></div>", unsafe_allow_html=True)
+                    with ca1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu CSAT</div><div class='kpi-value'>{my_csat:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
+                    with ca2: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu Índice IR</div><div class='kpi-value'>{my_ir:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_IR:.0f}%</div></div>", unsafe_allow_html=True)
                     with ca3: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>Conformidade (Escala)</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
                     with ca4: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>Aderência (Pausas)</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
 
                     st.markdown("### 🎧 Produtividade e Retenção")
                     co1, co2, co3, co4 = st.columns(4)
                     with co1: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Chats Atendidos</div><div class='kpi-value'>{int(dados['Vol. Chat']) if pd.notna(dados['Vol. Chat']) else 0}</div></div>", unsafe_allow_html=True)
-                    with co2: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>O Meu TMA Chat</div><div class='kpi-value'>{dados['TMA Chat (Min)']:.1f} m</div></div>", unsafe_allow_html=True)
+                    with co2: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Meu TMA Chat</div><div class='kpi-value'>{dados['TMA Chat (Min)']:.1f} m</div></div>", unsafe_allow_html=True)
                     with co3: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
                     with co4: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
                 else:
