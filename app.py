@@ -440,12 +440,13 @@ else:
                 return 'Ativo'
             df_periodo_mapeado['Status_Dinamico'] = df_periodo_mapeado.apply(identificar_status_unificado, axis=1)
 
-        aba_dashboard, aba_retencao, aba_ponto, aba_equipe, aba_ferias, aba_upload = st.tabs([
+        aba_dashboard, aba_retencao, aba_ponto, aba_equipe, aba_ferias, aba_relatorio, aba_upload = st.tabs([
             "📊 Dashboard Geral", 
             "🎯 Inteligência de Retenção",
             "⏰ Banco de Horas",
             "👥 Gestão da Equipe",
             "🌴 Calendário de Férias",
+            "📑 Relatório Diretoria",
             "⚙️ Consolidação (Upload)"
         ])
         
@@ -633,6 +634,101 @@ else:
                     time.sleep(0.5)
                     st.rerun()
             except Exception: st.warning("Base de usuários indisponível.")
+            
+        # ==========================================
+        # NOVO: RELATÓRIO EXECUTIVO DIRETORIA
+        # ==========================================
+        with aba_relatorio:
+            st.header("📑 Relatório Executivo para a Diretoria")
+            st.markdown("Visão consolidada da operação (Últimos 6 meses) com todos os indicadores solicitados para copiar ou exportar.")
+            
+            if base_mestre_existe and not df_completo.empty:
+                df_rel = df_completo.copy()
+                
+                # Aplica regra de status para limpar as faltas de quem estava de férias/afastado
+                def get_status_relatorio(row):
+                    if str(row.get('STATUS', 'ATIVO')).strip().upper() == 'AFASTADO': return 'Afastado'
+                    mes_ferias = str(row.get('FÉRIAS 2026', '')).strip().upper()
+                    if mes_ferias == str(row.get('text_mes', '')).strip().upper(): return 'Férias'
+                    return 'Ativo'
+                
+                df_rel['Status_Dinamico'] = df_rel.apply(get_status_relatorio, axis=1)
+                
+                cols_to_num = ['Total_Pesq_CSAT', 'Boas_Pesq_CSAT', 'Total_Pesq_IR', 'Sim_Pesq_IR', 'RT geral valido', 'RT geral calculado', 'Faltas', 'Aderência (%)', 'Conformidade (%)', 'Taxa_Retencao_Original']
+                for c in cols_to_num:
+                    if c in df_rel.columns:
+                        df_rel[c] = pd.to_numeric(df_rel[c], errors='coerce').fillna(0)
+                    else:
+                        df_rel[c] = 0.0
+                
+                # Zera as faltas de quem estava inativo no mês correspondente
+                df_rel['Faltas'] = df_rel.apply(lambda r: r['Faltas'] if r['Status_Dinamico'] == 'Ativo' else 0, axis=1)
+                
+                meses_map = {m: i for i, m in enumerate(MESES, 1)}
+                df_rel['Mes_Num'] = df_rel['Mês'].str.title().map(meses_map)
+                df_rel = df_rel.dropna(subset=['Mes_Num'])
+                df_rel['Ordem'] = df_rel['Ano'].astype(str) + "-" + df_rel['Mes_Num'].astype(int).astype(str).str.zfill(2)
+                
+                df_rel_agg = df_rel.groupby(['Ordem', 'Mês', 'Ano']).agg({
+                    'RT geral valido': 'sum',
+                    'RT geral calculado': 'sum',
+                    'Faltas': 'sum',
+                    'Total_Pesq_CSAT': 'sum',
+                    'Boas_Pesq_CSAT': 'sum',
+                    'Total_Pesq_IR': 'sum',
+                    'Sim_Pesq_IR': 'sum',
+                    'Aderência (%)': 'mean',
+                    'Conformidade (%)': 'mean'
+                }).reset_index().sort_values('Ordem').tail(6) 
+                
+                df_rel_agg['Taxa Retenção (%)'] = df_rel_agg.apply(lambda r: (r['RT geral valido'] / r['RT geral calculado'] * 100) if r['RT geral calculado'] > 0 else 0, axis=1)
+                df_rel_agg['CSAT (%)'] = df_rel_agg.apply(lambda r: (r['Boas_Pesq_CSAT'] / r['Total_Pesq_CSAT'] * 100) if r['Total_Pesq_CSAT'] > 0 else 0, axis=1)
+                df_rel_agg['Índice IR (%)'] = df_rel_agg.apply(lambda r: (r['Sim_Pesq_IR'] / r['Total_Pesq_IR'] * 100) if r['Total_Pesq_IR'] > 0 else 0, axis=1)
+                
+                df_final_rel = pd.DataFrame()
+                df_final_rel['Período'] = df_rel_agg['Mês'].astype(str).str.title() + "/" + df_rel_agg['Ano'].astype(str)
+                df_final_rel['Taxa de Retenção'] = df_rel_agg['Taxa Retenção (%)']
+                df_final_rel['Retenções Realizadas (Vol)'] = df_rel_agg['RT geral valido']
+                df_final_rel['Absenteísmo (Faltas)'] = df_rel_agg['Faltas']
+                df_final_rel['Conformidade Média'] = df_rel_agg['Conformidade (%)']
+                df_final_rel['Aderência Média'] = df_rel_agg['Aderência (%)']
+                df_final_rel['CSAT Média'] = df_rel_agg['CSAT (%)']
+                df_final_rel['Índice IR Média'] = df_rel_agg['Índice IR (%)']
+                
+                st.dataframe(df_final_rel.style.format({
+                    'Taxa de Retenção': '{:.2f}%',
+                    'Retenções Realizadas (Vol)': '{:.0f}',
+                    'Absenteísmo (Faltas)': '{:.0f}',
+                    'Conformidade Média': '{:.2f}%',
+                    'Aderência Média': '{:.2f}%',
+                    'CSAT Média': '{:.2f}%',
+                    'Índice IR Média': '{:.2f}%'
+                }), use_container_width=True)
+                
+                st.markdown("### 📝 Resumo Rápido (Copiar e Colar)")
+                st.info("Copie o texto abaixo e envie diretamente para a sua gerência/diretoria.")
+                
+                if not df_final_rel.empty:
+                    texto_resumo = f"📊 *Análise Operacional Consolidada - Últimos {len(df_final_rel)} Meses:*\n\n"
+                    for _, row in df_final_rel.iterrows():
+                        texto_resumo += f"🔹 *{row['Período']}*\n"
+                        texto_resumo += f"- Taxa de Retenção: {row['Taxa de Retenção']:.2f}% ({row['Retenções Realizadas (Vol)']:.0f} retenções concluídas)\n"
+                        texto_resumo += f"- Absenteísmo: {row['Absenteísmo (Faltas)']:.0f} faltas registradas\n"
+                        texto_resumo += f"- Qualidade (CSAT / IR): {row['CSAT Média']:.1f}% / {row['Índice IR Média']:.1f}%\n"
+                        texto_resumo += f"- Processos (Conf. / Aderência): {row['Conformidade Média']:.1f}% / {row['Aderência Média']:.1f}%\n\n"
+                    
+                    st.text_area("Texto do E-mail/Mensagem:", texto_resumo, height=250)
+                
+                csv_export = df_final_rel.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Baixar Tabela em CSV (Excel)",
+                    data=csv_export,
+                    file_name="relatorio_gerencial_6_meses.csv",
+                    mime="text/csv",
+                    type="primary"
+                )
+            else:
+                st.info("Não há dados históricos suficientes para gerar o relatório consolidado.")
 
         with aba_upload:
             st.header("⚙️ Central de Consolidação de Relatórios")
