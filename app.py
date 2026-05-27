@@ -237,6 +237,38 @@ def calcular_tempo_empresa(data_str):
     except Exception:
         return "Formato inválido"
 
+def calcular_comissao_rv(row):
+    """Calcula a Remuneração Variável (RV) baseada na tabela e gatilhos de volume"""
+    taxa_ret = row.get('% Retenção', 0.0)
+    vol_fibra = row.get('RT_Fibra_Validas', 0.0)
+    vol_adic = row.get('RT_Adicional_Validas', 0.0)
+    
+    # Gatilho de 80% da meta de 220 (176 peças)
+    if (vol_fibra + vol_adic) < 176:
+        return 0.0
+        
+    # Faixas da tabela enviada
+    if taxa_ret < 65.00:
+        multiplicador = 0.0
+    elif taxa_ret < 66.00:
+        multiplicador = 4.50
+    elif taxa_ret < 67.00:
+        multiplicador = 5.00
+    elif taxa_ret < 68.00:
+        multiplicador = 5.50
+    elif taxa_ret < 69.00:
+        multiplicador = 6.00
+    elif taxa_ret < 70.00:
+        multiplicador = 6.50
+    elif taxa_ret < 75.00:
+        multiplicador = 7.50
+    else:
+        multiplicador = 9.00
+        
+    # Cálculo Final
+    comissao = (vol_fibra * multiplicador) + (vol_adic * 1.50)
+    return comissao
+
 @st.cache_data(ttl=5)
 def carregar_dados_mestre_seguro():
     df = ler_csv_via_api_github("dados_consolidados_master.csv")
@@ -245,7 +277,6 @@ def carregar_dados_mestre_seguro():
     return df
 
 def obter_dados_historicos(df, agente="Todos"):
-    """Filtra e consolida a base de dados de todos os meses para criar o gráfico histórico"""
     df_hist = df.copy()
     
     if agente != "Todos":
@@ -635,9 +666,6 @@ else:
                     st.rerun()
             except Exception: st.warning("Base de usuários indisponível.")
             
-        # ==========================================
-        # NOVO: RELATÓRIO EXECUTIVO DIRETORIA COM GRÁFICOS
-        # ==========================================
         with aba_relatorio:
             st.header("📑 Relatório Executivo para a Diretoria")
             st.markdown("Visão consolidada da operação (Últimos 6 meses) com todos os indicadores solicitados e análise volumétrica.")
@@ -836,6 +864,14 @@ else:
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
                         df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
                         
+                        # CAPTURA AS NOVAS COLUNAS PARA COMISSÃO
+                        col_rt_fibra = next((c for c in df_ret.columns if 'FIBRA' in str(c).upper() and 'VALID' in str(c).upper()), None)
+                        if not col_rt_fibra: col_rt_fibra = next((c for c in df_ret.columns if 'FIBRA' in str(c).upper()), None)
+                        col_rt_adic = next((c for c in df_ret.columns if 'ADICIONAL' in str(c).upper() and 'VALID' in str(c).upper()), None)
+                        
+                        df_ret['RT_Fibra_Validas'] = pd.to_numeric(df_ret[col_rt_fibra], errors='coerce').fillna(0) if col_rt_fibra else pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
+                        df_ret['RT_Adicional_Validas'] = pd.to_numeric(df_ret[col_rt_adic], errors='coerce').fillna(0) if col_rt_adic else 0
+                        
                         df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
                         col_tpc_chat = next((c for c in df_chat.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
                         agg_chat = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
@@ -866,7 +902,7 @@ else:
 
                         df_novo = pd.merge(df_users, df_perf[['Chave_Nome', 'Aderência (%)', 'Conformidade (%)']], on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_faltas_agg[['Chave_Nome', 'Faltas']], on='Chave_Nome', how='left')
-                        df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculado', 'Taxa_Retencao_Original']], on='Chave_Nome', how='left')
+                        df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculado', 'Taxa_Retencao_Original', 'RT_Fibra_Validas', 'RT_Adicional_Validas']], on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_chat_agg, on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_voz_agg, on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_pesq_agg, on='Chave_Nome', how='left')
@@ -877,6 +913,8 @@ else:
                         if 'TPC Chat (Seg)' not in df_novo.columns: df_novo['TPC Chat (Seg)'] = 0.0
                         if 'TPC Voz (Seg)' not in df_novo.columns: df_novo['TPC Voz (Seg)'] = 0.0
                         if 'Faltas' not in df_novo.columns: df_novo['Faltas'] = 0
+                        if 'RT_Fibra_Validas' not in df_novo.columns: df_novo['RT_Fibra_Validas'] = 0.0
+                        if 'RT_Adicional_Validas' not in df_novo.columns: df_novo['RT_Adicional_Validas'] = 0.0
                         
                         try:
                             df_master_existente = ler_csv_via_api_github("dados_consolidados_master.csv")
@@ -931,6 +969,9 @@ else:
                     (df_calculado['Vol. Voz'] > 0) |
                     (df_calculado['Faltas'] > 0)
                 ].copy()
+                
+                # APLICA CÁLCULO DE COMISSÃO
+                df_calculado['Comissão (R$)'] = df_calculado.apply(calcular_comissao_rv, axis=1)
 
                 st.subheader(f"🚨 Auditoria de Desvios de Metas Contratuais ({mes_view}/{ano_view})")
                 df_ativos_alertas = df_calculado[df_calculado['Status_Dinamico'] == 'Ativo']
@@ -1001,6 +1042,7 @@ else:
                 tpc_chat_medio = df_final_escopo['TPC Chat (Seg)'].mean() if 'TPC Chat (Seg)' in df_final_escopo.columns else 0.0
                 tpc_voz_medio = df_final_escopo['TPC Voz (Seg)'].mean() if 'TPC Voz (Seg)' in df_final_escopo.columns else 0.0
                 v_faltas = df_final_escopo['Faltas'].sum() if 'Faltas' in df_final_escopo.columns else 0
+                v_comissao = df_final_escopo['Comissão (R$)'].sum() if 'Comissão (R$)' in df_final_escopo.columns else 0.0
 
                 st.subheader(f"🎯 Métricas Consolidadas ({filtro_agente})")
                 
@@ -1011,7 +1053,7 @@ else:
                 with c3: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>📈 Taxa Retenção</div><div class='kpi-value'>{v_retencao:.2f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
                 with c4: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>📅 Conformidade</div><div class='kpi-value'>{v_conf:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
                 with c5: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>⏱️ Aderência</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
-                with c6: st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>❌ Faltas totais</div><div class='kpi-value' style='color:#dc3545;'>{int(v_faltas)}</div><div style='font-size:11px;color:#6c757d;font-weight:bold;'>No Período</div></div>", unsafe_allow_html=True)
+                with c6: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745; background-color: #f6ffed;'><div class='kpi-title'>💰 Comissão Gerada</div><div class='kpi-value' style='color:#28a745;'>R$ {v_comissao:,.2f}</div><div style='font-size:11px;color:#6c757d;font-weight:bold;'>Estimativa (RV)</div></div>", unsafe_allow_html=True)
 
                 col_chat, col_voz = st.columns(2)
                 with col_chat:
@@ -1198,7 +1240,7 @@ else:
                 st.markdown("---")
 
                 st.subheader("👥 Detalhamento Operacional por Colaborador")
-                colunas_tabela = ['Nome Exibição', 'Status_Dinamico', 'Faltas', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Conformidade (%)', 'Aderência (%)', 'Vol. Chat', 'TMA Chat (Min)']
+                colunas_tabela = ['Nome Exibição', 'Status_Dinamico', 'Comissão (R$)', 'Faltas', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Conformidade (%)', 'Aderência (%)', 'Vol. Chat', 'TMA Chat (Min)']
                 if 'TPC Chat (Seg)' in df_final_escopo.columns: colunas_tabela.append('TPC Chat (Seg)')
                 colunas_tabela += ['Vol. Voz', 'TMA Voz (Min)']
                 if 'TPC Voz (Seg)' in df_final_escopo.columns: colunas_tabela.append('TPC Voz (Seg)')
@@ -1211,7 +1253,7 @@ else:
                     return [''] * len(row)
 
                 format_dict = {
-                    'Faltas': '{:.0f}', 'CSAT_Agente (%)': '{:.1f}%', 'IR_Agente (%)': '{:.1f}%', 'Aderência (%)': '{:.1f}%', 'Conformidade (%)': '{:.1f}%',
+                    'Comissão (R$)': 'R$ {:.2f}', 'Faltas': '{:.0f}', 'CSAT_Agente (%)': '{:.1f}%', 'IR_Agente (%)': '{:.1f}%', 'Aderência (%)': '{:.1f}%', 'Conformidade (%)': '{:.1f}%',
                     '% Retenção': '{:.2f}%', '% Cancelamento': '{:.2f}%', 'Vol. Chat': '{:,.0f}', 'TMA Chat (Min)': '{:.1f}m',
                     'Vol. Voz': '{:,.0f}', 'TMA Voz (Min)': '{:.1f}m', 'RT geral valido': '{:,.0f}'
                 }
@@ -1306,6 +1348,9 @@ else:
                     elif str(meus_dados_cadastrais.get('STATUS', '')).strip().upper() == 'AFASTADO': status_agente_mes = 'Afastado'
                     minhas_faltas = int(dados['Faltas']) if 'Faltas' in df_periodo.columns and pd.notna(dados.get('Faltas')) and status_agente_mes == 'Ativo' else 0
                     
+                    # CÁLCULO DE COMISSÃO DO AGENTE
+                    minha_comissao = calcular_comissao_rv(dados)
+                    
                     df_ranking = df_periodo.copy()
                     rank_display = "N/A"
                     cor_rank = "#6c757d"
@@ -1341,12 +1386,13 @@ else:
                     """, unsafe_allow_html=True)
                     
                     st.markdown("### ⭐ Qualidade e Processos")
-                    ca1, ca2, ca3, ca4, ca5 = st.columns(5)
+                    ca1, ca2, ca3, ca4, ca5, ca6 = st.columns(6)
                     with ca1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu CSAT</div><div class='kpi-value'>{my_csat:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
                     with ca2: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu Índice IR</div><div class='kpi-value'>{my_ir:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_IR:.0f}%</div></div>", unsafe_allow_html=True)
-                    with ca3: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>Conformidade (Escala)</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
-                    with ca4: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>Aderência (Pausas)</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
+                    with ca3: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>Conformidade</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
+                    with ca4: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>Aderência</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
                     with ca5: st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>Minhas Faltas</div><div class='kpi-value' style='color:#dc3545;'>{minhas_faltas}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>No Período</div></div>", unsafe_allow_html=True)
+                    with ca6: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745; background-color: #f6ffed;'><div class='kpi-title'>💰 Minha Comissão</div><div class='kpi-value' style='color:#28a745;'>R$ {minha_comissao:,.2f}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Estimativa (RV)</div></div>", unsafe_allow_html=True)
 
                     st.markdown("### 🎧 Produtividade")
                     co1, co2, co3, co4 = st.columns(4)
