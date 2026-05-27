@@ -608,7 +608,7 @@ else:
                 
                 if not df_grafico_ferias.empty:
                     resumo_mes = df_grafico_ferias.groupby('FÉRIAS 2026').size().reset_index(name='Operadores Ausentes')
-                    ordem_meses = {mes: i for i, enumerate(MESES)}
+                    ordem_meses = {mes: i for i, mes in enumerate(MESES)}
                     resumo_mes['Ordem'] = resumo_mes['FÉRIAS 2026'].map(ordem_meses)
                     resumo_mes = resumo_mes.sort_values('Ordem').drop('Ordem', axis=1)
 
