@@ -608,7 +608,7 @@ else:
                 
                 if not df_grafico_ferias.empty:
                     resumo_mes = df_grafico_ferias.groupby('FÉRIAS 2026').size().reset_index(name='Operadores Ausentes')
-                    ordem_meses = {mes: i for i, mes in enumerate(MESES)}
+                    ordem_meses = {mes: i for i, enumerate(MESES)}
                     resumo_mes['Ordem'] = resumo_mes['FÉRIAS 2026'].map(ordem_meses)
                     resumo_mes = resumo_mes.sort_values('Ordem').drop('Ordem', axis=1)
 
@@ -636,11 +636,11 @@ else:
             except Exception: st.warning("Base de usuários indisponível.")
             
         # ==========================================
-        # NOVO: RELATÓRIO EXECUTIVO DIRETORIA
+        # NOVO: RELATÓRIO EXECUTIVO DIRETORIA COM GRÁFICOS
         # ==========================================
         with aba_relatorio:
             st.header("📑 Relatório Executivo para a Diretoria")
-            st.markdown("Visão consolidada da operação (Últimos 6 meses) com todos os indicadores solicitados para copiar ou exportar.")
+            st.markdown("Visão consolidada da operação (Últimos 6 meses) com todos os indicadores solicitados e análise volumétrica.")
             
             if base_mestre_existe and not df_completo.empty:
                 df_rel = df_completo.copy()
@@ -686,23 +686,55 @@ else:
                 df_final_rel = pd.DataFrame()
                 df_final_rel['Período'] = df_rel_agg['Mês'].astype(str).str.title() + "/" + df_rel_agg['Ano'].astype(str)
                 df_final_rel['Taxa de Retenção'] = df_rel_agg['Taxa Retenção (%)']
+                df_final_rel['Total Oportunidades Retenção'] = df_rel_agg['RT geral calculado']
                 df_final_rel['Retenções Realizadas (Vol)'] = df_rel_agg['RT geral valido']
                 df_final_rel['Absenteísmo (Faltas)'] = df_rel_agg['Faltas']
                 df_final_rel['Conformidade Média'] = df_rel_agg['Conformidade (%)']
                 df_final_rel['Aderência Média'] = df_rel_agg['Aderência (%)']
                 df_final_rel['CSAT Média'] = df_rel_agg['CSAT (%)']
+                df_final_rel['Total Avaliações CSAT'] = df_rel_agg['Total_Pesq_CSAT']
                 df_final_rel['Índice IR Média'] = df_rel_agg['Índice IR (%)']
+                df_final_rel['Total Pesquisas IR'] = df_rel_agg['Total_Pesq_IR']
                 
                 st.dataframe(df_final_rel.style.format({
                     'Taxa de Retenção': '{:.2f}%',
+                    'Total Oportunidades Retenção': '{:.0f}',
                     'Retenções Realizadas (Vol)': '{:.0f}',
                     'Absenteísmo (Faltas)': '{:.0f}',
                     'Conformidade Média': '{:.2f}%',
                     'Aderência Média': '{:.2f}%',
                     'CSAT Média': '{:.2f}%',
-                    'Índice IR Média': '{:.2f}%'
+                    'Total Avaliações CSAT': '{:.0f}',
+                    'Índice IR Média': '{:.2f}%',
+                    'Total Pesquisas IR': '{:.0f}'
                 }), use_container_width=True)
                 
+                st.markdown("---")
+                st.subheader("📊 Painel de Visualização Gráfica")
+                
+                tab_g1, tab_g2, tab_g3 = st.tabs(["📉 Qualidade e Retenção (%)", "📉 Processos e Escala (%)", "📈 Volumetria Absoluta (Amostras)"])
+                
+                with tab_g1:
+                    df_melt_pct1 = df_final_rel.melt(id_vars='Período', value_vars=['Taxa de Retenção', 'CSAT Média', 'Índice IR Média'], var_name='Indicador', value_name='Valor (%)')
+                    fig_pct1 = px.line(df_melt_pct1, x='Período', y='Valor (%)', color='Indicador', markers=True, title="Evolução de Qualidade e Retenção (%)")
+                    fig_pct1.update_traces(textposition="top center", texttemplate='%{y:.1f}%')
+                    fig_pct1.update_yaxes(range=[0, 105])
+                    st.plotly_chart(fig_pct1, use_container_width=True)
+
+                with tab_g2:
+                    df_melt_pct2 = df_final_rel.melt(id_vars='Período', value_vars=['Conformidade Média', 'Aderência Média'], var_name='Indicador', value_name='Valor (%)')
+                    fig_pct2 = px.line(df_melt_pct2, x='Período', y='Valor (%)', color='Indicador', markers=True, title="Evolução de Processos (%)", color_discrete_sequence=['#9932cc', '#ba55d3'])
+                    fig_pct2.update_traces(textposition="top center", texttemplate='%{y:.1f}%')
+                    fig_pct2.update_yaxes(range=[0, 105])
+                    st.plotly_chart(fig_pct2, use_container_width=True)
+
+                with tab_g3:
+                    df_melt_vol = df_final_rel.melt(id_vars='Período', value_vars=['Total Oportunidades Retenção', 'Retenções Realizadas (Vol)', 'Total Avaliações CSAT', 'Absenteísmo (Faltas)'], var_name='Métrica', value_name='Volume')
+                    fig_vol = px.bar(df_melt_vol, x='Período', y='Volume', color='Métrica', barmode='group', title="Volumetria Absoluta da Operação", color_discrete_sequence=['#ffc107', '#28a745', '#17a2b8', '#dc3545'])
+                    fig_vol.update_traces(textposition="outside", texttemplate='%{y:.0f}')
+                    st.plotly_chart(fig_vol, use_container_width=True)
+                
+                st.markdown("---")
                 st.markdown("### 📝 Resumo Rápido (Copiar e Colar)")
                 st.info("Copie o texto abaixo e envie diretamente para a sua gerência/diretoria.")
                 
@@ -710,9 +742,10 @@ else:
                     texto_resumo = f"📊 *Análise Operacional Consolidada - Últimos {len(df_final_rel)} Meses:*\n\n"
                     for _, row in df_final_rel.iterrows():
                         texto_resumo += f"🔹 *{row['Período']}*\n"
-                        texto_resumo += f"- Taxa de Retenção: {row['Taxa de Retenção']:.2f}% ({row['Retenções Realizadas (Vol)']:.0f} retenções concluídas)\n"
+                        texto_resumo += f"- Taxa de Retenção: {row['Taxa de Retenção']:.2f}% (Salvou {row['Retenções Realizadas (Vol)']:.0f} de {row['Total Oportunidades Retenção']:.0f} clientes)\n"
                         texto_resumo += f"- Absenteísmo: {row['Absenteísmo (Faltas)']:.0f} faltas registradas\n"
-                        texto_resumo += f"- Qualidade (CSAT / IR): {row['CSAT Média']:.1f}% / {row['Índice IR Média']:.1f}%\n"
+                        texto_resumo += f"- Qualidade (CSAT): {row['CSAT Média']:.1f}% (Baseado em {row['Total Avaliações CSAT']:.0f} avaliações)\n"
+                        texto_resumo += f"- Índice de Resolução (IR): {row['Índice IR Média']:.1f}% (Baseado em {row['Total Pesquisas IR']:.0f} avaliações)\n"
                         texto_resumo += f"- Processos (Conf. / Aderência): {row['Conformidade Média']:.1f}% / {row['Aderência Média']:.1f}%\n\n"
                     
                     st.text_area("Texto do E-mail/Mensagem:", texto_resumo, height=250)
