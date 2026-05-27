@@ -237,37 +237,30 @@ def calcular_tempo_empresa(data_str):
     except Exception:
         return "Formato inválido"
 
-def calcular_comissao_rv(row):
-    """Calcula a Remuneração Variável (RV) baseada na tabela e gatilhos de volume"""
-    taxa_ret = row.get('% Retenção', 0.0)
-    vol_fibra = row.get('RT_Fibra_Validas', 0.0)
-    vol_adic = row.get('RT_Adicional_Validas', 0.0)
+def calcular_comissao_rv(taxa_ret, vol_fibra, vol_adic):
+    """Calcula a RV baseada exclusivamente no volume de retenção e tabela de percentual"""
+    taxa_ret = float(taxa_ret) if pd.notna(taxa_ret) else 0.0
+    vol_fibra = float(vol_fibra) if pd.notna(vol_fibra) else 0.0
+    vol_adic = float(vol_adic) if pd.notna(vol_adic) else 0.0
     
-    # Gatilho de 80% da meta de 220 (176 peças)
+    # Gatilho Único de Volume (80% de 220 = 176 peças)
     if (vol_fibra + vol_adic) < 176:
         return 0.0
         
-    # Faixas da tabela enviada
-    if taxa_ret < 65.00:
-        multiplicador = 0.0
-    elif taxa_ret < 66.00:
-        multiplicador = 4.50
-    elif taxa_ret < 67.00:
-        multiplicador = 5.00
-    elif taxa_ret < 68.00:
-        multiplicador = 5.50
-    elif taxa_ret < 69.00:
-        multiplicador = 6.00
-    elif taxa_ret < 70.00:
-        multiplicador = 6.50
-    elif taxa_ret < 75.00:
-        multiplicador = 7.50
-    else:
-        multiplicador = 9.00
+    # Faixas da Tabela de Retenção
+    multiplicador = 0.0
+    if taxa_ret >= 75.00: multiplicador = 9.00
+    elif taxa_ret >= 70.00: multiplicador = 7.50
+    elif taxa_ret >= 69.00: multiplicador = 6.50
+    elif taxa_ret >= 68.00: multiplicador = 6.00
+    elif taxa_ret >= 67.00: multiplicador = 5.50
+    elif taxa_ret >= 66.00: multiplicador = 5.00
+    elif taxa_ret >= 65.00: multiplicador = 4.50
         
-    # Cálculo Final
-    comissao = (vol_fibra * multiplicador) + (vol_adic * 1.50)
-    return comissao
+    if multiplicador == 0.0:
+        return 0.0
+        
+    return (vol_fibra * multiplicador) + (vol_adic * 1.50)
 
 @st.cache_data(ttl=5)
 def carregar_dados_mestre_seguro():
@@ -277,6 +270,7 @@ def carregar_dados_mestre_seguro():
     return df
 
 def obter_dados_historicos(df, agente="Todos"):
+    """Filtra e consolida a base de dados de todos os meses para criar o gráfico histórico"""
     df_hist = df.copy()
     
     if agente != "Todos":
@@ -971,7 +965,11 @@ else:
                 ].copy()
                 
                 # APLICA CÁLCULO DE COMISSÃO
-                df_calculado['Comissão (R$)'] = df_calculado.apply(calcular_comissao_rv, axis=1)
+                df_calculado['Comissão (R$)'] = df_calculado.apply(lambda r: calcular_comissao_rv(
+                    r.get('% Retenção', 0.0),
+                    r.get('RT_Fibra_Validas', 0.0),
+                    r.get('RT_Adicional_Validas', 0.0)
+                ), axis=1)
 
                 st.subheader(f"🚨 Auditoria de Desvios de Metas Contratuais ({mes_view}/{ano_view})")
                 df_ativos_alertas = df_calculado[df_calculado['Status_Dinamico'] == 'Ativo']
@@ -1042,7 +1040,9 @@ else:
                 tpc_chat_medio = df_final_escopo['TPC Chat (Seg)'].mean() if 'TPC Chat (Seg)' in df_final_escopo.columns else 0.0
                 tpc_voz_medio = df_final_escopo['TPC Voz (Seg)'].mean() if 'TPC Voz (Seg)' in df_final_escopo.columns else 0.0
                 v_faltas = df_final_escopo['Faltas'].sum() if 'Faltas' in df_final_escopo.columns else 0
-                v_comissao = df_final_escopo['Comissão (R$)'].sum() if 'Comissão (R$)' in df_final_escopo.columns else 0.0
+                
+                if filtro_agente != "Todos":
+                    v_comissao = df_final_escopo['Comissão (R$)'].sum() if 'Comissão (R$)' in df_final_escopo.columns else 0.0
 
                 st.subheader(f"🎯 Métricas Consolidadas ({filtro_agente})")
                 
@@ -1053,7 +1053,11 @@ else:
                 with c3: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>📈 Taxa Retenção</div><div class='kpi-value'>{v_retencao:.2f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
                 with c4: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>📅 Conformidade</div><div class='kpi-value'>{v_conf:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
                 with c5: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>⏱️ Aderência</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
-                with c6: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745; background-color: #f6ffed;'><div class='kpi-title'>💰 Comissão Gerada</div><div class='kpi-value' style='color:#28a745;'>R$ {v_comissao:,.2f}</div><div style='font-size:11px;color:#6c757d;font-weight:bold;'>Estimativa (RV)</div></div>", unsafe_allow_html=True)
+                
+                if filtro_agente == "Todos":
+                    with c6: st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>❌ Faltas totais</div><div class='kpi-value' style='color:#dc3545;'>{int(v_faltas)}</div><div style='font-size:11px;color:#6c757d;font-weight:bold;'>No Período</div></div>", unsafe_allow_html=True)
+                else:
+                    with c6: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745; background-color: #f6ffed;'><div class='kpi-title'>💰 Comissão</div><div class='kpi-value' style='color:#28a745;'>R$ {v_comissao:,.2f}</div><div style='font-size:11px;color:#6c757d;font-weight:bold;'>Estimativa (RV)</div></div>", unsafe_allow_html=True)
 
                 col_chat, col_voz = st.columns(2)
                 with col_chat:
@@ -1105,7 +1109,7 @@ else:
                 
                 if filtro_agente == "Todos":
                     st.subheader("📊 Central de Auditoria Visual de Indicadores")
-                    tab_graf_1, tab_graf_2, tab_graf_3 = st.tabs(["🏅 Rankings de Qualidade & Retenção", "⏱️ Rankings de Processos & Eficiência", "💬 Volumetria de Atendimentos"])
+                    tab_graf_1, tab_graf_2, tab_graf_3, tab_graf_4 = st.tabs(["🏅 Rankings de Qualidade & Retenção", "⏱️ Rankings de Processos & Eficiência", "💬 Volumetria de Atendimentos", "💰 Rankings de Comissões"])
                     df_chart_base = df_final_escopo.dropna(subset=['Nome Exibição'])
                     
                     with tab_graf_1:
@@ -1193,6 +1197,18 @@ else:
                             fig_volvz.update_traces(texttemplate='%{text:,.0f}', textposition='auto')
                             fig_volvz.update_yaxes(autorange="reversed")
                             st.plotly_chart(fig_volvz, use_container_width=True)
+                            
+                    with tab_graf_4:
+                        if 'Comissão (R$)' in df_chart_base.columns and df_chart_base['Comissão (R$)'].sum() > 0:
+                            df_comissao = df_chart_base[df_chart_base['Comissão (R$)'] > 0].sort_values(by='Comissão (R$)', ascending=True)
+                            if not df_comissao.empty:
+                                fig_comissao = px.bar(df_comissao, x='Comissão (R$)', y='Nome Exibição', orientation='h', title="💰 Ranking de Remuneração Variável Estimada", color='Comissão (R$)', color_continuous_scale='Greens', text='Comissão (R$)')
+                                fig_comissao.update_traces(texttemplate='R$ %{text:,.2f}', textposition='auto')
+                                st.plotly_chart(fig_comissao, use_container_width=True)
+                            else:
+                                st.info("Nenhum operador atingiu os gatilhos e volume para comissionamento neste período.")
+                        else:
+                            st.info("Nenhuma comissão gerada neste período. Verifique os dados de volume e qualidade.")
                     
                 st.markdown("---")
                 
@@ -1348,8 +1364,12 @@ else:
                     elif str(meus_dados_cadastrais.get('STATUS', '')).strip().upper() == 'AFASTADO': status_agente_mes = 'Afastado'
                     minhas_faltas = int(dados['Faltas']) if 'Faltas' in df_periodo.columns and pd.notna(dados.get('Faltas')) and status_agente_mes == 'Ativo' else 0
                     
-                    # CÁLCULO DE COMISSÃO DO AGENTE
-                    minha_comissao = calcular_comissao_rv(dados)
+                    # CÁLCULO DE COMISSÃO DO AGENTE (Sem gatilhos de Qualidade)
+                    minha_comissao = calcular_comissao_rv(
+                        taxa_ret=my_tx_ret,
+                        vol_fibra=dados.get('RT_Fibra_Validas', 0.0),
+                        vol_adic=dados.get('RT_Adicional_Validas', 0.0)
+                    )
                     
                     df_ranking = df_periodo.copy()
                     rank_display = "N/A"
