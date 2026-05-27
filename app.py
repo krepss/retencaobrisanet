@@ -465,9 +465,10 @@ else:
                 return 'Ativo'
             df_periodo_mapeado['Status_Dinamico'] = df_periodo_mapeado.apply(identificar_status_unificado, axis=1)
 
-        aba_dashboard, aba_retencao, aba_ponto, aba_equipe, aba_ferias, aba_relatorio, aba_upload = st.tabs([
+        aba_dashboard, aba_retencao, aba_comissao, aba_ponto, aba_equipe, aba_ferias, aba_relatorio, aba_upload = st.tabs([
             "📊 Dashboard Geral", 
             "🎯 Inteligência de Retenção",
+            "💰 Comissões (RV)",
             "⏰ Banco de Horas",
             "👥 Gestão da Equipe",
             "🌴 Calendário de Férias",
@@ -523,6 +524,56 @@ else:
                                 st.markdown(f"<div style='background-color:#fff5f5; border-left: 4px solid #dc3545; padding: 10px; margin-bottom: 8px; border-radius: 4px;'><b>📉 {row['Nome Exibição']}</b><br/>Taxa: <b>{row['Taxa_Retencao_Original']:.2f}%</b> (Perdeu {int(row['RT geral calculado'] - row['RT geral valido'])} clientes)</div>", unsafe_allow_html=True)
                 else:
                     st.info("A base de dados atual não possui as colunas de retenção estruturadas corretamente.")
+
+        with aba_comissao:
+            st.header("💰 Gestão de Remuneração Variável (Comissões)")
+            st.markdown("Acompanhe o atingimento do volume mínimo (176 peças) e a comissão gerada por cada operador no mês.")
+            
+            if not base_mestre_existe or df_periodo_mapeado.empty:
+                st.warning("Não há dados processados para este mês.")
+            else:
+                df_com = df_periodo_mapeado[df_periodo_mapeado['Status_Dinamico'] == 'Ativo'].copy()
+                
+                if 'Taxa_Retencao_Original' not in df_com.columns: df_com['Taxa_Retencao_Original'] = 0.0
+                if 'RT_Fibra_Validas' not in df_com.columns: df_com['RT_Fibra_Validas'] = 0.0
+                if 'RT_Adicional_Validas' not in df_com.columns: df_com['RT_Adicional_Validas'] = 0.0
+                
+                df_com['Vol_Fibra'] = pd.to_numeric(df_com['RT_Fibra_Validas'], errors='coerce').fillna(0)
+                df_com['Vol_Adic'] = pd.to_numeric(df_com['RT_Adicional_Validas'], errors='coerce').fillna(0)
+                df_com['Total_Pecas'] = df_com['Vol_Fibra'] + df_com['Vol_Adic']
+                df_com['Taxa_Ret'] = pd.to_numeric(df_com['Taxa_Retencao_Original'], errors='coerce').fillna(0)
+                
+                df_com['Comissão (R$)'] = df_com.apply(lambda r: calcular_comissao_rv(r['Taxa_Ret'], r['Vol_Fibra'], r['Vol_Adic']), axis=1)
+                df_com['Atingiu Gatilho (176)?'] = df_com['Total_Pecas'].apply(lambda x: '✅ Sim' if x >= 176 else '❌ Não')
+                
+                colunas_mostrar = ['Nome Exibição', 'Vol_Fibra', 'Vol_Adic', 'Total_Pecas', 'Atingiu Gatilho (176)?', 'Taxa_Ret', 'Comissão (R$)']
+                df_mostrar = df_com[colunas_mostrar].sort_values(by=['Comissão (R$)', 'Total_Pecas'], ascending=[False, False])
+                
+                df_mostrar.rename(columns={
+                    'Nome Exibição': 'Operador', 
+                    'Vol_Fibra': 'Retenções Principais (Fibra/5G)', 
+                    'Vol_Adic': 'Retenções Adicionais', 
+                    'Total_Pecas': 'Total Geral', 
+                    'Taxa_Ret': 'Taxa de Retenção (%)'
+                }, inplace=True)
+                
+                tot_comissao = df_mostrar['Comissão (R$)'].sum()
+                tot_elegiveis = len(df_mostrar[df_mostrar['Comissão (R$)'] > 0])
+                
+                c_c1, c_c2 = st.columns(2)
+                with c_c1:
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Total de Comissão a Pagar</div><div class='kpi-value' style='color:#28a745;'>R$ {tot_comissao:,.2f}</div></div>", unsafe_allow_html=True)
+                with c_c2:
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Operadores Elegíveis (Bateram a Meta)</div><div class='kpi-value'>{tot_elegiveis} de {len(df_mostrar)}</div></div>", unsafe_allow_html=True)
+                
+                st.markdown("#### 📋 Tabela Detalhada de Comissões")
+                st.dataframe(df_mostrar.style.format({
+                    'Retenções Principais (Fibra/5G)': '{:.0f}',
+                    'Retenções Adicionais': '{:.0f}',
+                    'Total Geral': '{:.0f}',
+                    'Taxa de Retenção (%)': '{:.2f}%',
+                    'Comissão (R$)': 'R$ {:.2f}'
+                }), use_container_width=True)
 
         with aba_ponto:
             st.header("⏰ Verificação de Banco de Horas")
@@ -1406,21 +1457,21 @@ else:
                     """, unsafe_allow_html=True)
                     
                     st.markdown("### ⭐ Qualidade e Processos")
-                    ca1, ca2, ca3, ca4, ca5, ca6 = st.columns(6)
+                    ca1, ca2, ca3, ca4, ca5 = st.columns(5)
                     with ca1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu CSAT</div><div class='kpi-value'>{my_csat:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CSAT:.0f}%</div></div>", unsafe_allow_html=True)
                     with ca2: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>Meu Índice IR</div><div class='kpi-value'>{my_ir:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_IR:.0f}%</div></div>", unsafe_allow_html=True)
-                    with ca3: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>Conformidade</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
-                    with ca4: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>Aderência</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
+                    with ca3: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>Conformidade (Escala)</div><div class='kpi-value'>{dados['Conformidade (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
+                    with ca4: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>Aderência (Pausas)</div><div class='kpi-value'>{dados['Aderência (%)']:.1f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
                     with ca5: st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>Minhas Faltas</div><div class='kpi-value' style='color:#dc3545;'>{minhas_faltas}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>No Período</div></div>", unsafe_allow_html=True)
-                    with ca6: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745; background-color: #f6ffed;'><div class='kpi-title'>💰 Minha Comissão</div><div class='kpi-value' style='color:#28a745;'>R$ {minha_comissao:,.2f}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Estimativa (RV)</div></div>", unsafe_allow_html=True)
 
-                    st.markdown("### 🎧 Produtividade")
-                    co1, co2, co3, co4 = st.columns(4)
+                    st.markdown("### 🎧 Produtividade e Resultados")
+                    co1, co2, co3, co4, co5 = st.columns(5)
                     with co1: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Chats Atendidos</div><div class='kpi-value'>{int(dados['Vol. Chat']) if pd.notna(dados['Vol. Chat']) else 0}</div></div>", unsafe_allow_html=True)
                     with co2: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Meu TMA Chat</div><div class='kpi-value'>{dados['TMA Chat (Min)']:.1f}m</div></div>", unsafe_allow_html=True)
                     val_tpc_chat = f"{dados['TPC Chat (Seg)']:.1f}s" if 'TPC Chat (Seg)' in df_periodo.columns and pd.notna(dados.get('TPC Chat (Seg)')) and dados['TPC Chat (Seg)'] > 0 else "--"
                     with co3: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Meu TPC Chat</div><div class='kpi-value'>{val_tpc_chat}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_TPC:.0f}s</div></div>", unsafe_allow_html=True)
                     with co4: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
+                    with co5: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745; background-color: #f6ffed;'><div class='kpi-title'>💰 Minha Comissão</div><div class='kpi-value' style='color:#28a745;'>R$ {minha_comissao:,.2f}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Estimativa (RV)</div></div>", unsafe_allow_html=True)
 
                     cv1, cv2, cv3, cv4 = st.columns(4)
                     with cv1: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
