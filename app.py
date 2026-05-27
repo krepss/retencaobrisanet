@@ -645,7 +645,6 @@ else:
             if base_mestre_existe and not df_completo.empty:
                 df_rel = df_completo.copy()
                 
-                # Aplica regra de status para limpar as faltas de quem estava de férias/afastado
                 def get_status_relatorio(row):
                     if str(row.get('STATUS', 'ATIVO')).strip().upper() == 'AFASTADO': return 'Afastado'
                     mes_ferias = str(row.get('FÉRIAS 2026', '')).strip().upper()
@@ -661,7 +660,6 @@ else:
                     else:
                         df_rel[c] = 0.0
                 
-                # Zera as faltas de quem estava inativo no mês correspondente
                 df_rel['Faltas'] = df_rel.apply(lambda r: r['Faltas'] if r['Status_Dinamico'] == 'Ativo' else 0, axis=1)
                 
                 meses_map = {m: i for i, m in enumerate(MESES, 1)}
@@ -980,7 +978,7 @@ else:
                 with c3: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>📈 Taxa Retenção</div><div class='kpi-value'>{v_retencao:.2f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
                 with c4: st.markdown(f"<div class='kpi-card' style='border-left-color: #9932cc;'><div class='kpi-title'>📅 Conformidade</div><div class='kpi-value'>{v_conf:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_CONFORMIDADE:.0f}%</div></div>", unsafe_allow_html=True)
                 with c5: st.markdown(f"<div class='kpi-card' style='border-left-color: #ba55d3;'><div class='kpi-title'>⏱️ Aderência</div><div class='kpi-value'>{v_ade:.1f}%</div><div style='font-size:11px;color:#28a745;font-weight:bold;'>Meta: {META_ADERENCIA:.0f}%</div></div>", unsafe_allow_html=True)
-                with c6: st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>❌ Faltas</div><div class='kpi-value' style='color:#dc3545;'>{int(v_faltas)}</div><div style='font-size:11px;color:#6c757d;font-weight:bold;'>No Período</div></div>", unsafe_allow_html=True)
+                with c6: st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>❌ Faltas totais</div><div class='kpi-value' style='color:#dc3545;'>{int(v_faltas)}</div><div style='font-size:11px;color:#6c757d;font-weight:bold;'>No Período</div></div>", unsafe_allow_html=True)
 
                 col_chat, col_voz = st.columns(2)
                 with col_chat:
@@ -1129,7 +1127,27 @@ else:
                     df_faltas_mes = df_periodo_mapeado.copy()
                     df_faltas_mes['Faltas_Reais'] = df_faltas_mes.apply(lambda r: pd.to_numeric(r.get('Faltas', 0), errors='coerce') if r['Status_Dinamico'] == 'Ativo' else 0, axis=1).fillna(0)
                     
+                    if filtro_agente == "Todos":
+                        st.markdown("#### ⚙️ Calculadora de Absenteísmo da Equipe")
+                        st.markdown("Considere a jornada padrão de **6 horas diárias (Seg a Sáb)** para os operadores ativos.")
+                        col_calc1, col_calc2 = st.columns(2)
+                        dias_uteis = col_calc1.number_input("Dias previstos de escala no mês:", min_value=1, max_value=31, value=26)
+                        perdas_minutos = col_calc2.number_input("Perdas extras da equipe em minutos (Atrasos, saídas, etc):", min_value=0, value=0)
+                        
+                        total_ativos = len(df_faltas_mes[df_faltas_mes['Status_Dinamico'] == 'Ativo'])
+                        total_faltas_equipe = df_faltas_mes['Faltas_Reais'].sum()
+                        
+                        horas_planejadas = total_ativos * dias_uteis * 6
+                        horas_perdidas = (total_faltas_equipe * 6) + (perdas_minutos / 60)
+                        taxa_abs = (horas_perdidas / horas_planejadas * 100) if horas_planejadas > 0 else 0.0
+                        
+                        st.markdown(f"<div class='kpi-card' style='border-left-color: #e53e3e; max-width: 400px; margin: 0 auto;'><div class='kpi-title'>Taxa de Absenteísmo Estimada</div><div class='kpi-value' style='color:#e53e3e;'>{taxa_abs:.2f}%</div><div style='font-size:12px;color:#6c757d;margin-top:5px;'>Perda: {horas_perdidas:.1f}h / Previsto: {horas_planejadas:.0f}h</div></div>", unsafe_allow_html=True)
+                        st.markdown("<br>", unsafe_allow_html=True)
+                    
                     df_faltou = df_faltas_mes[df_faltas_mes['Faltas_Reais'] > 0].copy()
+                    if filtro_agente != "Todos":
+                        df_faltou = df_faltou[df_faltou['Nome Exibição'] == filtro_agente]
+                        
                     if not df_faltou.empty:
                         df_faltou_grp = df_faltou.groupby('Nome Exibição').agg(
                             Total_Faltas=('Faltas_Reais', 'sum')
