@@ -642,7 +642,6 @@ else:
             ano_up = col_a.selectbox("Ano de competência das planilhas:", ANOS)
             st.markdown("---")
             
-            # ATUALIZADO PARA 6 ARQUIVOS
             arquivos_carregados = st.file_uploader("Arraste e solte os 6 arquivos CSV aqui de uma vez", type=["csv"], accept_multiple_files=True)
             relatorios_identificados = {"Aderência e Conformidade": None, "Faltas Diárias": None, "Pesquisa (CSAT/IR)": None, "Chat": None, "Voz": None, "Retenção": None}
             if arquivos_carregados:
@@ -687,7 +686,6 @@ else:
                         col_nome = 'COLABORADOR' if 'COLABORADOR' in df_users.columns else 'Nome'
                         df_users['Chave_Nome'] = df_users[col_nome].astype(str).str.strip().str.upper()
 
-                        # PROCESSAMENTO ADERÊNCIA E CONFORMIDADE
                         col_ade = next((c for c in df_perf.columns if 'ADER' in str(c).upper()), None)
                         col_conf = next((c for c in df_perf.columns if 'CONFOR' in str(c).upper()), None)
                         col_agente = next((c for c in df_perf.columns if 'AGENTE' in str(c).upper()), None)
@@ -696,25 +694,21 @@ else:
                         df_perf['Conformidade (%)'] = df_perf[col_conf].apply(limpar_porcentagem)
                         df_perf['Chave_Nome'] = df_perf[col_agente].astype(str).str.strip().str.upper()
 
-                        # NOVO PROCESSAMENTO DE FALTAS DIÁRIAS (WFM)
                         col_agente_falta = next((c for c in df_faltas_diarias.columns if 'AGENTE' in str(c).upper()), None)
                         col_conf_falta = next((c for c in df_faltas_diarias.columns if 'CONFOR' in str(c).upper()), None)
                         
                         df_faltas_diarias['Chave_Nome'] = df_faltas_diarias[col_agente_falta].astype(str).str.strip().str.upper()
-                        # Transforma a conformidade diária em número e marca 1 para falta (quando for 0.0)
                         df_faltas_diarias['Valor_Conformidade'] = pd.to_numeric(df_faltas_diarias[col_conf_falta].astype(str).str.replace(',', '.'), errors='coerce')
                         df_faltas_diarias['Falta_Dia'] = (df_faltas_diarias['Valor_Conformidade'] == 0.0).astype(int)
                         
                         df_faltas_agg = df_faltas_diarias.groupby('Chave_Nome').agg({'Falta_Dia': 'sum'}).reset_index()
                         df_faltas_agg.rename(columns={'Falta_Dia': 'Faltas'}, inplace=True)
                         
-                        # PROCESSAMENTO RETENÇÃO
                         df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
                         df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
                         df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
                         
-                        # PROCESSAMENTO CHAT
                         df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
                         col_tpc_chat = next((c for c in df_chat.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
                         agg_chat = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
@@ -727,7 +721,6 @@ else:
                             df_chat_agg.rename(columns={col_tpc_chat: 'TPC Chat (ms)'}, inplace=True)
                             df_chat_agg['TPC Chat (Seg)'] = df_chat_agg['TPC Chat (ms)'].apply(ms_para_segundos)
                         
-                        # PROCESSAMENTO VOZ
                         df_voz['Chave_Nome'] = df_voz['Nome do agente'].astype(str).str.strip().str.upper()
                         col_tpc_voz = next((c for c in df_voz.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
                         agg_voz = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
@@ -740,16 +733,12 @@ else:
                             df_voz_agg.rename(columns={col_tpc_voz: 'TPC Voz (ms)'}, inplace=True)
                             df_voz_agg['TPC Voz (Seg)'] = df_voz_agg['TPC Voz (ms)'].apply(ms_para_segundos)
                         
-                        # PROCESSAMENTO PESQUISA
                         df_pesq['Chave_Nome'] = df_pesq['Atendente'].astype(str).str.strip().str.upper()
                         df_pesq['CSAT_Num'] = pd.to_numeric(df_pesq['CSAT'], errors='coerce')
                         df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(Total_Pesq_CSAT=('CSAT_Num', 'count'), Boas_Pesq_CSAT=('CSAT_Num', lambda x: (x >= 4).sum()), Total_Pesq_IR=('IR', 'count'), Sim_Pesq_IR=('IR', lambda x: (x.astype(str).str.strip().str.upper() == 'SIM').sum())).reset_index()
 
-                        # MERGE FINAL
                         df_novo = pd.merge(df_users, df_perf[['Chave_Nome', 'Aderência (%)', 'Conformidade (%)']], on='Chave_Nome', how='left')
-                        # Junta a contagem de faltas do arquivo diário
                         df_novo = pd.merge(df_novo, df_faltas_agg[['Chave_Nome', 'Faltas']], on='Chave_Nome', how='left')
-                        
                         df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculado', 'Taxa_Retencao_Original']], on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_chat_agg, on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_voz_agg, on='Chave_Nome', how='left')
@@ -846,30 +835,6 @@ else:
                 with c_a5:
                     with st.expander(f"❌ Faltas: {total_faltas_alertas} ausências"):
                         for _, row in lista_detratores_faltas.iterrows(): st.markdown(f"<div class='detractor-box' style='background-color:#fff5f5;border-color:#feb2b2;color:#c53030;'>❌ <b>{row['Nome Exibição']}</b> | Faltas: <b>{int(row['Faltas'])}</b></div>", unsafe_allow_html=True)
-
-                st.markdown("---")
-                
-                st.subheader(f"📅 Absenteísmo no Mês ({mes_view}/{ano_view})")
-                
-                if 'Faltas' in df_periodo_mapeado.columns:
-                    df_faltas_mes = df_periodo_mapeado.copy()
-                    
-                    df_faltas_mes['Faltas_Reais'] = df_faltas_mes.apply(lambda r: pd.to_numeric(r.get('Faltas', 0), errors='coerce') if r['Status_Dinamico'] == 'Ativo' else 0, axis=1).fillna(0)
-                    
-                    df_faltou = df_faltas_mes[df_faltas_mes['Faltas_Reais'] > 0].copy()
-                    if not df_faltou.empty:
-                        df_faltou_grp = df_faltou.groupby('Nome Exibição').agg(
-                            Total_Faltas=('Faltas_Reais', 'sum')
-                        ).reset_index()
-                        
-                        df_faltou_grp.rename(columns={'Nome Exibição': 'Operador', 'Total_Faltas': 'Faltas no Mês'}, inplace=True)
-                        df_faltou_grp = df_faltou_grp.sort_values(by='Faltas no Mês', ascending=False)
-                        
-                        st.dataframe(df_faltou_grp.style.format({'Faltas no Mês': '{:.0f}'}), use_container_width=True)
-                    else:
-                        st.success(f"🎉 Nenhuma falta registrada na operação em {mes_view}/{ano_view} (entre os ativos)!")
-                else:
-                    st.info(f"O relatório de faltas para {mes_view}/{ano_view} não está disponível.")
 
                 st.markdown("---")
                 
@@ -1059,7 +1024,31 @@ else:
                             fig_volvz.update_traces(texttemplate='%{text:,.0f}', textposition='auto')
                             fig_volvz.update_yaxes(autorange="reversed")
                             st.plotly_chart(fig_volvz, use_container_width=True)
-                    st.markdown("---")
+                    
+                st.markdown("---")
+                
+                st.subheader(f"📅 Absenteísmo no Mês ({mes_view}/{ano_view})")
+                
+                if 'Faltas' in df_periodo_mapeado.columns:
+                    df_faltas_mes = df_periodo_mapeado.copy()
+                    df_faltas_mes['Faltas_Reais'] = df_faltas_mes.apply(lambda r: pd.to_numeric(r.get('Faltas', 0), errors='coerce') if r['Status_Dinamico'] == 'Ativo' else 0, axis=1).fillna(0)
+                    
+                    df_faltou = df_faltas_mes[df_faltas_mes['Faltas_Reais'] > 0].copy()
+                    if not df_faltou.empty:
+                        df_faltou_grp = df_faltou.groupby('Nome Exibição').agg(
+                            Total_Faltas=('Faltas_Reais', 'sum')
+                        ).reset_index()
+                        
+                        df_faltou_grp.rename(columns={'Nome Exibição': 'Operador', 'Total_Faltas': 'Faltas no Mês'}, inplace=True)
+                        df_faltou_grp = df_faltou_grp.sort_values(by='Faltas no Mês', ascending=False)
+                        
+                        st.dataframe(df_faltou_grp.style.format({'Faltas no Mês': '{:.0f}'}), use_container_width=True)
+                    else:
+                        st.success(f"🎉 Nenhuma falta registrada na operação em {mes_view}/{ano_view} (entre os ativos)!")
+                else:
+                    st.info(f"O relatório de faltas para {mes_view}/{ano_view} não está disponível.")
+
+                st.markdown("---")
 
                 st.subheader("👥 Detalhamento Operacional por Colaborador")
                 colunas_tabela = ['Nome Exibição', 'Status_Dinamico', 'Faltas', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Conformidade (%)', 'Aderência (%)', 'Vol. Chat', 'TMA Chat (Min)']
