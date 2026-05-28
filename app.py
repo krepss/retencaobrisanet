@@ -269,7 +269,6 @@ def calcular_comissao_rv(taxa_ret, vol_fibra, vol_adic, diamantes):
     valor_diamantes = diamantes * 0.50
     
     if atingiu_gatilho:
-        # Bateu meta de retenção: Ganha RV das Retenções + 100% dos Diamantes
         multiplicador = 0.0
         if taxa_ret >= 65.00:
             multiplicador = 7.50
@@ -467,7 +466,7 @@ else:
     
     st.sidebar.markdown("---")
     info_atualizacao = obter_ultima_atualizacao()
-    st.sidebar.info(f"🔄 **Base atualizada em:**\n{info_atualizacao} (BRT)")
+    st.sidebar.info(f"🔄 **Base atualizada em:**\n{info_atualizacao}")
     
     st.sidebar.markdown("---")
     if st.sidebar.button("🚪 Sair do Sistema (Logout)", use_container_width=True):
@@ -908,7 +907,7 @@ else:
             st.markdown("### 📋 Status da Validação")
             c_chk1, c_chk2, c_chk3, c_chk4, c_chk5, c_chk6, c_chk7 = st.columns(7)
             with c_chk1: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Aderência e Conformidade'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>1. Ade & Conf</b></div>", unsafe_allow_html=True)
-            with c_chk2: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Faltas Diárias'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>2. Faltas WFM</b></div>", unsafe_allow_html=True)
+            with c_chk2: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Faltas Diárias'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>2. Faltas</b></div>", unsafe_allow_html=True)
             with c_chk3: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Pesquisa (CSAT/IR)'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>3. Pesquisas</b></div>", unsafe_allow_html=True)
             with c_chk4: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Chat'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>4. Chat</b></div>", unsafe_allow_html=True)
             with c_chk5: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Voz'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>5. Voz</b></div>", unsafe_allow_html=True)
@@ -929,6 +928,23 @@ else:
                         
                         col_nome = 'COLABORADOR' if 'COLABORADOR' in df_users.columns else 'Nome'
                         df_users['Chave_Nome'] = df_users[col_nome].astype(str).str.strip().str.upper()
+                        nomes_mestre = df_users['Chave_Nome'].tolist()
+
+                        def buscar_melhor_match(nome):
+                            if pd.isna(nome) or str(nome).strip() == "": return str(nome)
+                            nome = str(nome).strip().upper()
+                            if nome in nomes_mestre: return nome
+                            for nm in nomes_mestre:
+                                if nome in nm or nm in nome: return nm
+                            partes = nome.split()
+                            if len(partes) >= 2:
+                                for nm in nomes_mestre:
+                                    pm = nm.split()
+                                    if len(pm) >= 2 and partes[0] == pm[0] and partes[-1] == pm[-1]: return nm
+                                for nm in nomes_mestre:
+                                    pm = nm.split()
+                                    if len(pm) >= 2 and partes[0] == pm[0] and partes[1] == pm[1]: return nm
+                            return nome
 
                         col_ade = next((c for c in df_perf.columns if 'ADER' in str(c).upper()), None)
                         col_conf = next((c for c in df_perf.columns if 'CONFOR' in str(c).upper()), None)
@@ -937,11 +953,13 @@ else:
                         df_perf['Aderência (%)'] = df_perf[col_ade].apply(limpar_porcentagem)
                         df_perf['Conformidade (%)'] = df_perf[col_conf].apply(limpar_porcentagem)
                         df_perf['Chave_Nome'] = df_perf[col_agente].astype(str).str.strip().str.upper()
+                        df_perf['Chave_Nome'] = df_perf['Chave_Nome'].apply(buscar_melhor_match)
 
                         col_agente_falta = next((c for c in df_faltas_diarias.columns if 'AGENTE' in str(c).upper()), None)
                         col_conf_falta = next((c for c in df_faltas_diarias.columns if 'CONFOR' in str(c).upper()), None)
                         
                         df_faltas_diarias['Chave_Nome'] = df_faltas_diarias[col_agente_falta].astype(str).str.strip().str.upper()
+                        df_faltas_diarias['Chave_Nome'] = df_faltas_diarias['Chave_Nome'].apply(buscar_melhor_match)
                         df_faltas_diarias['Valor_Conformidade'] = pd.to_numeric(df_faltas_diarias[col_conf_falta].astype(str).str.replace(',', '.'), errors='coerce')
                         df_faltas_diarias['Falta_Dia'] = (df_faltas_diarias['Valor_Conformidade'] == 0.0).astype(int)
                         
@@ -949,6 +967,7 @@ else:
                         df_faltas_agg.rename(columns={'Falta_Dia': 'Faltas'}, inplace=True)
                         
                         df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
+                        df_ret['Chave_Nome'] = df_ret['Chave_Nome'].apply(buscar_melhor_match)
                         df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
                         df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
@@ -964,10 +983,12 @@ else:
                         col_gam_colab = next((c for c in df_gam.columns if 'COLABORADOR' in str(c).upper()), None)
                         col_gam_diam = next((c for c in df_gam.columns if 'DIAMANTES' in str(c).upper()), None)
                         df_gam['Chave_Nome'] = df_gam[col_gam_colab].astype(str).str.strip().str.upper()
+                        df_gam['Chave_Nome'] = df_gam['Chave_Nome'].apply(buscar_melhor_match)
                         df_gam['Diamantes'] = pd.to_numeric(df_gam[col_gam_diam], errors='coerce').fillna(0)
                         df_gam_agg = df_gam.groupby('Chave_Nome').agg({'Diamantes': 'sum'}).reset_index()
 
                         df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
+                        df_chat['Chave_Nome'] = df_chat['Chave_Nome'].apply(buscar_melhor_match)
                         col_tpc_chat = next((c for c in df_chat.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
                         agg_chat = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
                         if col_tpc_chat: agg_chat[col_tpc_chat] = 'mean'
@@ -980,6 +1001,7 @@ else:
                             df_chat_agg['TPC Chat (Seg)'] = df_chat_agg['TPC Chat (ms)'].apply(ms_para_segundos)
                         
                         df_voz['Chave_Nome'] = df_voz['Nome do agente'].astype(str).str.strip().str.upper()
+                        df_voz['Chave_Nome'] = df_voz['Chave_Nome'].apply(buscar_melhor_match)
                         col_tpc_voz = next((c for c in df_voz.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
                         agg_voz = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
                         if col_tpc_voz: agg_voz[col_tpc_voz] = 'mean'
@@ -992,6 +1014,7 @@ else:
                             df_voz_agg['TPC Voz (Seg)'] = df_voz_agg['TPC Voz (ms)'].apply(ms_para_segundos)
                         
                         df_pesq['Chave_Nome'] = df_pesq['Atendente'].astype(str).str.strip().str.upper()
+                        df_pesq['Chave_Nome'] = df_pesq['Chave_Nome'].apply(buscar_melhor_match)
                         df_pesq['CSAT_Num'] = pd.to_numeric(df_pesq['CSAT'], errors='coerce')
                         df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(Total_Pesq_CSAT=('CSAT_Num', 'count'), Boas_Pesq_CSAT=('CSAT_Num', lambda x: (x >= 4).sum()), Total_Pesq_IR=('IR', 'count'), Sim_Pesq_IR=('IR', lambda x: (x.astype(str).str.strip().str.upper() == 'SIM').sum())).reset_index()
 
@@ -1483,7 +1506,7 @@ else:
                     elif str(meus_dados_cadastrais.get('STATUS', '')).strip().upper() == 'AFASTADO': status_agente_mes = 'Afastado'
                     minhas_faltas = int(dados['Faltas']) if 'Faltas' in df_periodo.columns and pd.notna(dados.get('Faltas')) and status_agente_mes == 'Ativo' else 0
                     
-                    # CÁLCULO DE COMISSÃO DO AGENTE (Ajustado com Diamantes)
+                    # CÁLCULO DE COMISSÃO DO AGENTE
                     minha_comissao = calcular_comissao_rv(
                         taxa_ret=my_tx_ret,
                         vol_fibra=dados.get('RT_Fibra_Validas', 0.0),
