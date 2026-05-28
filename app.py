@@ -307,7 +307,6 @@ def carregar_dados_mestre_seguro():
         if 'Nome Exibição' in df.columns:
             df['Nome Exibição'] = df['Nome Exibição'].apply(limpar_nome_duplo)
             
-        # FILTRO ANTI-DUPLICIDADE GLOBAL: Garante que exista apenas 1 linha por operador por mês
         if 'Nome Exibição' in df.columns and 'text_mes' in df.columns and 'text_ano' in df.columns:
             df = df.drop_duplicates(subset=['Nome Exibição', 'text_mes', 'text_ano'], keep='first')
             
@@ -514,6 +513,7 @@ else:
                 if mes_ferias == mes_view.upper(): return 'Férias'
                 return 'Ativo'
             df_periodo_mapeado['Status_Dinamico'] = df_periodo_mapeado.apply(identificar_status_unificado, axis=1)
+            df_periodo_mapeado['Nome Exibição'] = df_periodo_mapeado['Nome Exibição'].apply(limpar_nome_duplo)
 
         aba_dashboard, aba_retencao, aba_comissao, aba_ponto, aba_equipe, aba_ferias, aba_relatorio, aba_feedback, aba_upload = st.tabs([
             "📊 Dashboard", 
@@ -622,7 +622,6 @@ else:
                 
                 st.markdown("#### 📋 Tabela Detalhada de Comissões e Gamificação")
                 
-                # Formatando os valores como string de forma nativa para evitar que erros de tipagem do Streamlit destruam a visualização
                 df_mostrar_fmt = df_mostrar.copy()
                 df_mostrar_fmt['Diamantes'] = df_mostrar_fmt['Diamantes'].apply(lambda x: f"{x:.0f}")
                 df_mostrar_fmt['Retenções (Fibra/5G)'] = df_mostrar_fmt['Retenções (Fibra/5G)'].apply(lambda x: f"{x:.0f}")
@@ -917,7 +916,6 @@ else:
                 else:
                     df_feed_filtrado = df_feed[df_feed['Periodo_Competencia'].isin(periodos_selecionados)].copy()
                     
-                    # APLICA LIMPEZA DOS NOMES ANTES DO GROUPBY PARA EVITAR DUPLICADOS COMO "FRANCISCO EVERTON" e "FRANCISCO EVERTON "
                     df_feed_filtrado['Nome Exibição'] = df_feed_filtrado['Nome Exibição'].apply(limpar_nome_duplo)
                     
                     cols_to_num = ['Total_Pesq_CSAT', 'Boas_Pesq_CSAT', 'Total_Pesq_IR', 'Sim_Pesq_IR', 'RT geral valido', 'RT geral calculado', 'Faltas', 'Aderência (%)', 'Conformidade (%)']
@@ -939,7 +937,6 @@ else:
                         'Conformidade (%)': 'mean'
                     }).reset_index()
                     
-                    # FILTRO ANTI-FANTASMA: Remove quem está zerado em TODOS os indicadores vitais no período
                     mask_tem_dados = (df_feed_agg['RT geral calculado'] > 0) | (df_feed_agg['Aderência (%)'] > 0) | (df_feed_agg['Conformidade (%)'] > 0) | (df_feed_agg['Faltas'] > 0)
                     df_feed_agg = df_feed_agg[mask_tem_dados].copy()
                     
@@ -947,7 +944,6 @@ else:
                     df_feed_agg['IR Média (%)'] = df_feed_agg.apply(lambda r: (r['Sim_Pesq_IR'] / r['Total_Pesq_IR'] * 100) if r['Total_Pesq_IR'] > 0 else 0, axis=1)
                     df_feed_agg['Retenção Média (%)'] = df_feed_agg.apply(lambda r: (r['RT geral valido'] / r['RT geral calculado'] * 100) if r['RT geral calculado'] > 0 else 0, axis=1)
                     
-                    # Regras de Alerta (Onde a pessoa precisa melhorar?)
                     def checar_alertas(row):
                         alertas = []
                         if row['Total_Pesq_CSAT'] > 0 and row['CSAT Média (%)'] < META_CSAT: alertas.append("⭐ CSAT")
@@ -1097,14 +1093,16 @@ else:
                         
                         df_perf['Aderência (%)'] = df_perf[col_ade].apply(limpar_porcentagem)
                         df_perf['Conformidade (%)'] = df_perf[col_conf].apply(limpar_porcentagem)
-                        df_perf['Chave_Nome'] = df_perf[col_agente].apply(buscar_melhor_match)
+                        df_perf['Chave_Nome'] = df_perf[col_agente].astype(str).str.strip().str.upper()
+                        df_perf['Chave_Nome'] = df_perf['Chave_Nome'].apply(buscar_melhor_match)
                         df_perf_agg = df_perf.groupby('Chave_Nome').agg({'Aderência (%)': 'mean', 'Conformidade (%)': 'mean'}).reset_index()
 
                         # Processamento Faltas
                         col_agente_falta = next((c for c in df_faltas_diarias.columns if 'AGENTE' in str(c).upper()), None)
                         col_conf_falta = next((c for c in df_faltas_diarias.columns if 'CONFOR' in str(c).upper()), None)
                         
-                        df_faltas_diarias['Chave_Nome'] = df_faltas_diarias[col_agente_falta].apply(buscar_melhor_match)
+                        df_faltas_diarias['Chave_Nome'] = df_faltas_diarias[col_agente_falta].astype(str).str.strip().str.upper()
+                        df_faltas_diarias['Chave_Nome'] = df_faltas_diarias['Chave_Nome'].apply(buscar_melhor_match)
                         df_faltas_diarias['Valor_Conformidade'] = pd.to_numeric(df_faltas_diarias[col_conf_falta].astype(str).str.replace(',', '.'), errors='coerce')
                         df_faltas_diarias['Falta_Dia'] = (df_faltas_diarias['Valor_Conformidade'] == 0.0).astype(int)
                         
@@ -1112,7 +1110,8 @@ else:
                         df_faltas_agg.rename(columns={'Falta_Dia': 'Faltas'}, inplace=True)
                         
                         # Processamento Retenção
-                        df_ret['Chave_Nome'] = df_ret['responsavel'].apply(buscar_melhor_match)
+                        df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
+                        df_ret['Chave_Nome'] = df_ret['Chave_Nome'].apply(buscar_melhor_match)
                         df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
                         df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
@@ -1135,12 +1134,14 @@ else:
                         # Processamento Gamificação
                         col_gam_colab = next((c for c in df_gam.columns if 'COLABORADOR' in str(c).upper()), None)
                         col_gam_diam = next((c for c in df_gam.columns if 'DIAMANTES' in str(c).upper()), None)
-                        df_gam['Chave_Nome'] = df_gam[col_gam_colab].apply(buscar_melhor_match)
+                        df_gam['Chave_Nome'] = df_gam[col_gam_colab].astype(str).str.strip().str.upper()
+                        df_gam['Chave_Nome'] = df_gam['Chave_Nome'].apply(buscar_melhor_match)
                         df_gam['Diamantes'] = pd.to_numeric(df_gam[col_gam_diam], errors='coerce').fillna(0)
                         df_gam_agg = df_gam.groupby('Chave_Nome').agg({'Diamantes': 'sum'}).reset_index()
 
                         # Processamento Chat
-                        df_chat['Chave_Nome'] = df_chat['Nome do agente'].apply(buscar_melhor_match)
+                        df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
+                        df_chat['Chave_Nome'] = df_chat['Chave_Nome'].apply(buscar_melhor_match)
                         col_tpc_chat = next((c for c in df_chat.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
                         agg_chat = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
                         if col_tpc_chat: agg_chat[col_tpc_chat] = 'mean'
@@ -1153,7 +1154,8 @@ else:
                             df_chat_agg['TPC Chat (Seg)'] = df_chat_agg['TPC Chat (ms)'].apply(ms_para_segundos)
                         
                         # Processamento Voz
-                        df_voz['Chave_Nome'] = df_voz['Nome do agente'].apply(buscar_melhor_match)
+                        df_voz['Chave_Nome'] = df_voz['Nome do agente'].astype(str).str.strip().str.upper()
+                        df_voz['Chave_Nome'] = df_voz['Chave_Nome'].apply(buscar_melhor_match)
                         col_tpc_voz = next((c for c in df_voz.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
                         agg_voz = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
                         if col_tpc_voz: agg_voz[col_tpc_voz] = 'mean'
@@ -1166,7 +1168,8 @@ else:
                             df_voz_agg['TPC Voz (Seg)'] = df_voz_agg['TPC Voz (ms)'].apply(ms_para_segundos)
                         
                         # Processamento Pesquisa
-                        df_pesq['Chave_Nome'] = df_pesq['Atendente'].apply(buscar_melhor_match)
+                        df_pesq['Chave_Nome'] = df_pesq['Atendente'].astype(str).str.strip().str.upper()
+                        df_pesq['Chave_Nome'] = df_pesq['Chave_Nome'].apply(buscar_melhor_match)
                         df_pesq['CSAT_Num'] = pd.to_numeric(df_pesq['CSAT'], errors='coerce')
                         df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(Total_Pesq_CSAT=('CSAT_Num', 'count'), Boas_Pesq_CSAT=('CSAT_Num', lambda x: (x >= 4).sum()), Total_Pesq_IR=('IR', 'count'), Sim_Pesq_IR=('IR', lambda x: (x.astype(str).str.strip().str.upper() == 'SIM').sum())).reset_index()
 
@@ -1397,57 +1400,66 @@ else:
                     tab_graf_1, tab_graf_2, tab_graf_3, tab_graf_4 = st.tabs(["🏅 Rankings de Qualidade & Retenção", "⏱️ Rankings de Processos & Eficiência", "💬 Volumetria de Atendimentos", "💰 Rankings de Comissões"])
                     df_chart_base = df_final_escopo.dropna(subset=['Nome Exibição'])
                     
+                    altura_grafico = max(400, len(df_chart_base) * 28)
+                    
                     with tab_graf_1:
                         cg1, cg2, cg3 = st.columns(3)
                         with cg1:
-                            fig_csat = px.bar(df_chart_base.sort_values(by='CSAT_Agente (%)', ascending=True).head(10), x='CSAT_Agente (%)', y='Nome Exibição', orientation='h', title="⭐ CSAT (Detratores)", color='CSAT_Agente (%)', color_continuous_scale='Reds_r', text='CSAT_Agente (%)')
+                            fig_csat = px.bar(df_chart_base.sort_values(by='CSAT_Agente (%)', ascending=True), x='CSAT_Agente (%)', y='Nome Exibição', orientation='h', title="⭐ CSAT", color='CSAT_Agente (%)', color_continuous_scale='Reds_r', text='CSAT_Agente (%)')
                             fig_csat.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
                             fig_csat.update_yaxes(autorange="reversed")
                             fig_csat.add_vline(x=META_CSAT, line_dash="dash", line_color="green")
+                            fig_csat.update_layout(height=altura_grafico)
                             st.plotly_chart(fig_csat, use_container_width=True)
                         with cg2:
-                            fig_ir = px.bar(df_chart_base.sort_values(by='IR_Agente (%)', ascending=True).head(10), x='IR_Agente (%)', y='Nome Exibição', orientation='h', title="🎯 Índice IR", color='IR_Agente (%)', color_continuous_scale='Reds_r', text='IR_Agente (%)')
+                            fig_ir = px.bar(df_chart_base.sort_values(by='IR_Agente (%)', ascending=True), x='IR_Agente (%)', y='Nome Exibição', orientation='h', title="🎯 Índice IR", color='IR_Agente (%)', color_continuous_scale='Reds_r', text='IR_Agente (%)')
                             fig_ir.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
                             fig_ir.update_yaxes(autorange="reversed")
                             fig_ir.add_vline(x=META_IR, line_dash="dash", line_color="green")
+                            fig_ir.update_layout(height=altura_grafico)
                             st.plotly_chart(fig_ir, use_container_width=True)
                         with cg3:
-                            fig_ret = px.bar(df_chart_base.sort_values(by='% Retenção', ascending=True).head(10), x='% Retenção', y='Nome Exibição', orientation='h', title="📈 Retenção", color='% Retenção', color_continuous_scale='Reds_r', text='% Retenção')
+                            fig_ret = px.bar(df_chart_base.sort_values(by='% Retenção', ascending=True), x='% Retenção', y='Nome Exibição', orientation='h', title="📈 Retenção", color='% Retenção', color_continuous_scale='Reds_r', text='% Retenção')
                             fig_ret.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
                             fig_ret.update_yaxes(autorange="reversed")
                             fig_ret.add_vline(x=META_RETENCAO, line_dash="dash", line_color="green")
+                            fig_ret.update_layout(height=altura_grafico)
                             st.plotly_chart(fig_ret, use_container_width=True)
 
                     with tab_graf_2:
                         st.markdown("#### ⏱️ Escala e Aderência")
                         cx1, cx2 = st.columns(2)
                         with cx1:
-                            fig_ade = px.bar(df_chart_base.sort_values(by='Aderência (%)', ascending=True).head(10), x='Aderência (%)', y='Nome Exibição', orientation='h', title="⏱️ Aderência (Pausas)", color='Aderência (%)', color_continuous_scale='Reds_r', text='Aderência (%)')
+                            fig_ade = px.bar(df_chart_base.sort_values(by='Aderência (%)', ascending=True), x='Aderência (%)', y='Nome Exibição', orientation='h', title="⏱️ Aderência (Pausas)", color='Aderência (%)', color_continuous_scale='Reds_r', text='Aderência (%)')
                             fig_ade.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
                             fig_ade.update_yaxes(autorange="reversed")
                             fig_ade.add_vline(x=META_ADERENCIA, line_dash="dash", line_color="green")
+                            fig_ade.update_layout(height=altura_grafico)
                             st.plotly_chart(fig_ade, use_container_width=True)
                         with cx2:
-                            fig_conf = px.bar(df_chart_base.sort_values(by='Conformidade (%)', ascending=True).head(10), x='Conformidade (%)', y='Nome Exibição', orientation='h', title="📅 Conformidade (Escala)", color='Conformidade (%)', color_continuous_scale='Reds_r', text='Conformidade (%)')
+                            fig_conf = px.bar(df_chart_base.sort_values(by='Conformidade (%)', ascending=True), x='Conformidade (%)', y='Nome Exibição', orientation='h', title="📅 Conformidade (Escala)", color='Conformidade (%)', color_continuous_scale='Reds_r', text='Conformidade (%)')
                             fig_conf.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
                             fig_conf.update_yaxes(autorange="reversed")
                             fig_conf.add_vline(x=META_CONFORMIDADE, line_dash="dash", line_color="green")
+                            fig_conf.update_layout(height=altura_grafico)
                             st.plotly_chart(fig_conf, use_container_width=True)
                             
                         st.markdown("---")
                         st.markdown("#### 💬 Tempos de Chat (Ofensores)")
                         cx3, cx4 = st.columns(2)
                         with cx3:
-                            fig_tmach = px.bar(df_chart_base.sort_values(by='TMA Chat (Min)', ascending=False).head(10), x='TMA Chat (Min)', y='Nome Exibição', orientation='h', title="⏳ Maiores TMAs Chat", color='TMA Chat (Min)', color_continuous_scale='Oranges', text='TMA Chat (Min)')
+                            fig_tmach = px.bar(df_chart_base.sort_values(by='TMA Chat (Min)', ascending=False), x='TMA Chat (Min)', y='Nome Exibição', orientation='h', title="⏳ Maiores TMAs Chat", color='TMA Chat (Min)', color_continuous_scale='Oranges', text='TMA Chat (Min)')
                             fig_tmach.update_traces(texttemplate='%{text:.1f}m', textposition='auto')
                             fig_tmach.update_yaxes(autorange="reversed")
+                            fig_tmach.update_layout(height=altura_grafico)
                             st.plotly_chart(fig_tmach, use_container_width=True)
                         with cx4:
                             if 'TPC Chat (Seg)' in df_chart_base.columns and df_chart_base['TPC Chat (Seg)'].sum() > 0:
-                                fig_tpcch = px.bar(df_chart_base.sort_values(by='TPC Chat (Seg)', ascending=False).head(10), x='TPC Chat (Seg)', y='Nome Exibição', orientation='h', title="⏱️ Maiores TPCs Chat (Segundos)", color='TPC Chat (Seg)', color_continuous_scale='Oranges', text='TPC Chat (Seg)')
+                                fig_tpcch = px.bar(df_chart_base.sort_values(by='TPC Chat (Seg)', ascending=False), x='TPC Chat (Seg)', y='Nome Exibição', orientation='h', title="⏱️ Maiores TPCs Chat (Segundos)", color='TPC Chat (Seg)', color_continuous_scale='Oranges', text='TPC Chat (Seg)')
                                 fig_tpcch.update_traces(texttemplate='%{text:.1f}s', textposition='auto')
                                 fig_tpcch.update_yaxes(autorange="reversed")
                                 fig_tpcch.add_vline(x=META_TPC, line_dash="dash", line_color="green")
+                                fig_tpcch.update_layout(height=altura_grafico)
                                 st.plotly_chart(fig_tpcch, use_container_width=True)
                             else:
                                 st.info("Gráfico de TPC Chat indisponível (Dados Zerados).")
@@ -1456,16 +1468,18 @@ else:
                         st.markdown("#### 📞 Tempos de Voz (Ofensores)")
                         cx5, cx6 = st.columns(2)
                         with cx5:
-                            fig_tmavz = px.bar(df_chart_base.sort_values(by='TMA Voz (Min)', ascending=False).head(10), x='TMA Voz (Min)', y='Nome Exibição', orientation='h', title="⏳ Maiores TMAs Voz", color='TMA Voz (Min)', color_continuous_scale='Oranges', text='TMA Voz (Min)')
+                            fig_tmavz = px.bar(df_chart_base.sort_values(by='TMA Voz (Min)', ascending=False), x='TMA Voz (Min)', y='Nome Exibição', orientation='h', title="⏳ Maiores TMAs Voz", color='TMA Voz (Min)', color_continuous_scale='Oranges', text='TMA Voz (Min)')
                             fig_tmavz.update_traces(texttemplate='%{text:.1f}m', textposition='auto')
                             fig_tmavz.update_yaxes(autorange="reversed")
+                            fig_tmavz.update_layout(height=altura_grafico)
                             st.plotly_chart(fig_tmavz, use_container_width=True)
                         with cx6:
                             if 'TPC Voz (Seg)' in df_chart_base.columns and df_chart_base['TPC Voz (Seg)'].sum() > 0:
-                                fig_tpcvz = px.bar(df_chart_base.sort_values(by='TPC Voz (Seg)', ascending=False).head(10), x='TPC Voz (Seg)', y='Nome Exibição', orientation='h', title="⏱️ Maiores TPCs Voz (Segundos)", color='TPC Voz (Seg)', color_continuous_scale='Oranges', text='TPC Voz (Seg)')
+                                fig_tpcvz = px.bar(df_chart_base.sort_values(by='TPC Voz (Seg)', ascending=False), x='TPC Voz (Seg)', y='Nome Exibição', orientation='h', title="⏱️ Maiores TPCs Voz (Segundos)", color='TPC Voz (Seg)', color_continuous_scale='Oranges', text='TPC Voz (Seg)')
                                 fig_tpcvz.update_traces(texttemplate='%{text:.1f}s', textposition='auto')
                                 fig_tpcvz.update_yaxes(autorange="reversed")
                                 fig_tpcvz.add_vline(x=META_TPC, line_dash="dash", line_color="green")
+                                fig_tpcvz.update_layout(height=altura_grafico)
                                 st.plotly_chart(fig_tpcvz, use_container_width=True)
                             else:
                                 st.info("Gráfico de TPC Voz indisponível (Dados Zerados).")
@@ -1473,14 +1487,16 @@ else:
                     with tab_graf_3:
                         cv1, cv2 = st.columns(2)
                         with cv1:
-                            fig_volch = px.bar(df_chart_base.sort_values(by='Vol. Chat', ascending=False).head(12), x='Vol. Chat', y='Nome Exibição', orientation='h', title="💬 Volume Chats por Operador", color='Vol. Chat', color_continuous_scale='Blues', text='Vol. Chat')
+                            fig_volch = px.bar(df_chart_base.sort_values(by='Vol. Chat', ascending=False), x='Vol. Chat', y='Nome Exibição', orientation='h', title="💬 Volume Chats por Operador", color='Vol. Chat', color_continuous_scale='Blues', text='Vol. Chat')
                             fig_volch.update_traces(texttemplate='%{text:,.0f}', textposition='auto')
                             fig_volch.update_yaxes(autorange="reversed")
+                            fig_volch.update_layout(height=altura_grafico)
                             st.plotly_chart(fig_volch, use_container_width=True)
                         with cv2:
-                            fig_volvz = px.bar(df_chart_base.sort_values(by='Vol. Voz', ascending=False).head(12), x='Vol. Voz', y='Nome Exibição', orientation='h', title="📞 Volume Voz por Operador", color='Vol. Voz', color_continuous_scale='Teal', text='Vol. Voz')
+                            fig_volvz = px.bar(df_chart_base.sort_values(by='Vol. Voz', ascending=False), x='Vol. Voz', y='Nome Exibição', orientation='h', title="📞 Volume Voz por Operador", color='Vol. Voz', color_continuous_scale='Teal', text='Vol. Voz')
                             fig_volvz.update_traces(texttemplate='%{text:,.0f}', textposition='auto')
                             fig_volvz.update_yaxes(autorange="reversed")
+                            fig_volvz.update_layout(height=altura_grafico)
                             st.plotly_chart(fig_volvz, use_container_width=True)
                             
                     with tab_graf_4:
@@ -1489,6 +1505,7 @@ else:
                             if not df_comissao.empty:
                                 fig_comissao = px.bar(df_comissao, x='Comissão (R$)', y='Nome Exibição', orientation='h', title="💰 Ranking de Remuneração Variável Estimada", color='Comissão (R$)', color_continuous_scale='Greens', text='Comissão (R$)')
                                 fig_comissao.update_traces(texttemplate='R$ %{text:,.2f}', textposition='auto')
+                                fig_comissao.update_layout(height=max(400, len(df_comissao) * 28))
                                 st.plotly_chart(fig_comissao, use_container_width=True)
                             else:
                                 st.info("Nenhum operador atingiu os gatilhos e volume para comissionamento neste período.")
