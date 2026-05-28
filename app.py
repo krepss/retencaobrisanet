@@ -13,7 +13,7 @@ from datetime import datetime
 # ==========================================
 st.set_page_config(page_title="Sistema Operacional 360", page_icon="🎯", layout="wide")
 
-GESTOR_EMAIL = "gestao"
+GESTOR_EMAIL = "gestor"
 GESTOR_SENHA = "admin"
 
 # METAS OFICIAIS DA OPERAÇÃO BRISANET
