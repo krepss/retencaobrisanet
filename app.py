@@ -6,7 +6,7 @@ import io
 import time
 import base64
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ==========================================
 # CONFIGURAÇÕES GERAIS E PARÂMETROS DE METAS
@@ -237,6 +237,22 @@ def calcular_tempo_empresa(data_str):
     except Exception:
         return "Formato inválido"
 
+@st.cache_data(ttl=60)
+def obter_ultima_atualizacao():
+    """Busca no GitHub a data e hora do último commit da Base Mestre e converte para Horário de Brasília"""
+    try:
+        g = Github(st.secrets["GITHUB_TOKEN"])
+        repo = g.get_repo(st.secrets["GITHUB_REPO"])
+        commits = repo.get_commits(path="dados_consolidados_master.csv")
+        if commits.totalCount > 0:
+            data_utc = commits[0].commit.author.date
+            # Converte UTC para Horário de Brasília (UTC-3)
+            data_br = data_utc - timedelta(hours=3)
+            return data_br.strftime("%d/%m/%Y às %H:%M:%S")
+        return "Sem registros"
+    except Exception:
+        return "Indisponível"
+
 # ==========================================
 # MOTOR DE CÁLCULO DE COMISSÃO + GAMIFICAÇÃO
 # ==========================================
@@ -448,6 +464,10 @@ else:
     st.sidebar.markdown("### 📅 Filtro de Período")
     mes_view = st.sidebar.selectbox("Mês de Análise:", MESES, index=4) 
     ano_view = st.sidebar.selectbox("Ano de Análise:", ANOS)
+    
+    st.sidebar.markdown("---")
+    info_atualizacao = obter_ultima_atualizacao()
+    st.sidebar.info(f"🔄 **Base atualizada em:**\n{info_atualizacao} (BRT)")
     
     st.sidebar.markdown("---")
     if st.sidebar.button("🚪 Sair do Sistema (Logout)", use_container_width=True):
@@ -888,7 +908,7 @@ else:
             st.markdown("### 📋 Status da Validação")
             c_chk1, c_chk2, c_chk3, c_chk4, c_chk5, c_chk6, c_chk7 = st.columns(7)
             with c_chk1: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Aderência e Conformidade'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>1. Ade & Conf</b></div>", unsafe_allow_html=True)
-            with c_chk2: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Faltas Diárias'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>2. Faltas</b></div>", unsafe_allow_html=True)
+            with c_chk2: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Faltas Diárias'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>2. Faltas WFM</b></div>", unsafe_allow_html=True)
             with c_chk3: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Pesquisa (CSAT/IR)'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>3. Pesquisas</b></div>", unsafe_allow_html=True)
             with c_chk4: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Chat'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>4. Chat</b></div>", unsafe_allow_html=True)
             with c_chk5: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Voz'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>5. Voz</b></div>", unsafe_allow_html=True)
@@ -940,7 +960,7 @@ else:
                         df_ret['RT_Fibra_Validas'] = pd.to_numeric(df_ret[col_rt_fibra], errors='coerce').fillna(0) if col_rt_fibra else pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
                         df_ret['RT_Adicional_Validas'] = pd.to_numeric(df_ret[col_rt_adic], errors='coerce').fillna(0) if col_rt_adic else 0
                         
-                        # PROCESSAMENTO GAMIFICAÇÃO (Diamantes)
+                        # PROCESSAMENTO GAMIFICAÇÃO
                         col_gam_colab = next((c for c in df_gam.columns if 'COLABORADOR' in str(c).upper()), None)
                         col_gam_diam = next((c for c in df_gam.columns if 'DIAMANTES' in str(c).upper()), None)
                         df_gam['Chave_Nome'] = df_gam[col_gam_colab].astype(str).str.strip().str.upper()
@@ -1016,6 +1036,7 @@ else:
                         
                         enviar_para_github("dados_consolidados_master.csv", df_final_salvar.to_csv(index=False))
                         st.cache_data.clear()
+                        obter_ultima_atualizacao.clear()
                         st.success(f"Relatórios de {mes_up}/{ano_up} integrados ao Histórico Geral com sucesso!")
                         time.sleep(0.5)
                         st.rerun()
