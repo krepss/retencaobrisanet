@@ -222,6 +222,7 @@ def ms_para_segundos(ms):
 
 def limpar_nome_duplo(nome):
     if pd.isna(nome): return ""
+    # Remove espaços extras duplos e coloca no formato Title Case correto
     return " ".join(str(nome).strip().split()).title()
 
 def calcular_tempo_empresa(data_str):
@@ -290,20 +291,29 @@ def calcular_comissao_rv(taxa_ret, vol_fibra, vol_adic, diamantes):
         comissao_retencao = (vol_fibra * multiplicador) + (vol_adic * 1.50)
         comissao_total = comissao_retencao + valor_diamantes
     else:
-        # Não bateu meta de retenção: Perde a RV de retenção e ganha só 50% dos Diamantes
         comissao_total = valor_diamantes * 0.50
         
     return comissao_total
 
 @st.cache_data(ttl=5)
 def carregar_dados_mestre_seguro():
-    df = ler_csv_via_api_github("dados_consolidados_master.csv")
-    df['text_ano'] = df['Ano'].astype(str).str.strip()
-    df['text_mes'] = df['Mês'].astype(str).str.strip().str.title()
-    df['Periodo_Competencia'] = df['text_mes'] + "/" + df['text_ano']
-    if 'Nome Exibição' in df.columns:
-        df['Nome Exibição'] = df['Nome Exibição'].apply(limpar_nome_duplo)
-    return df
+    try:
+        df = ler_csv_via_api_github("dados_consolidados_master.csv")
+        if df.empty: return df
+        df['text_ano'] = df['Ano'].astype(str).str.strip()
+        df['text_mes'] = df['Mês'].astype(str).str.strip().str.title()
+        df['Periodo_Competencia'] = df['text_mes'] + "/" + df['text_ano']
+        
+        if 'Nome Exibição' in df.columns:
+            df['Nome Exibição'] = df['Nome Exibição'].apply(limpar_nome_duplo)
+            
+        # FILTRO ANTI-DUPLICIDADE GLOBAL: Garante que exista apenas 1 linha por operador por mês
+        if 'Nome Exibição' in df.columns and 'text_mes' in df.columns and 'text_ano' in df.columns:
+            df = df.drop_duplicates(subset=['Nome Exibição', 'text_mes', 'text_ano'], keep='first')
+            
+        return df
+    except Exception:
+        return pd.DataFrame()
 
 def obter_dados_historicos(df, agente="Todos"):
     """Filtra e consolida a base de dados de todos os meses para criar o gráfico histórico"""
@@ -504,8 +514,6 @@ else:
                 if mes_ferias == mes_view.upper(): return 'Férias'
                 return 'Ativo'
             df_periodo_mapeado['Status_Dinamico'] = df_periodo_mapeado.apply(identificar_status_unificado, axis=1)
-            # Aplica limpeza no nome para o dashboard ficar perfeito
-            df_periodo_mapeado['Nome Exibição'] = df_periodo_mapeado['Nome Exibição'].apply(limpar_nome_duplo)
 
         aba_dashboard, aba_retencao, aba_comissao, aba_ponto, aba_equipe, aba_ferias, aba_relatorio, aba_feedback, aba_upload = st.tabs([
             "📊 Dashboard", 
@@ -614,6 +622,7 @@ else:
                 
                 st.markdown("#### 📋 Tabela Detalhada de Comissões e Gamificação")
                 
+                # Formatando os valores como string de forma nativa para evitar que erros de tipagem do Streamlit destruam a visualização
                 df_mostrar_fmt = df_mostrar.copy()
                 df_mostrar_fmt['Diamantes'] = df_mostrar_fmt['Diamantes'].apply(lambda x: f"{x:.0f}")
                 df_mostrar_fmt['Retenções (Fibra/5G)'] = df_mostrar_fmt['Retenções (Fibra/5G)'].apply(lambda x: f"{x:.0f}")
@@ -853,7 +862,7 @@ else:
                 with tab_g3:
                     df_melt_vol = df_final_rel.melt(id_vars='Período', value_vars=['Total Oportunidades Retenção', 'Retenções Realizadas (Vol)', 'Total Avaliações CSAT', 'Absenteísmo (Faltas)'], var_name='Métrica', value_name='Volume')
                     fig_vol = px.bar(df_melt_vol, x='Período', y='Volume', color='Métrica', barmode='group', text='Volume', title="Volumetria Absoluta da Operação", color_discrete_sequence=['#ffc107', '#28a745', '#17a2b8', '#dc3545'])
-                    fig_vol.update_traces(textposition="outside", texttemplate='%{text:.0f}')
+                    fig_vol.update_traces(textposition="outside", texttemplate='%{y:.0f}')
                     st.plotly_chart(fig_vol, use_container_width=True)
                 
                 st.markdown("---")
@@ -1058,12 +1067,16 @@ else:
                         df_users = ler_csv_via_api_github("dados_usuarios.csv")
                         
                         col_nome = 'COLABORADOR' if 'COLABORADOR' in df_users.columns else 'Nome'
+                        
+                        # Limpa chaves na Base de Usuários para criar a lista Mestre
                         df_users['Chave_Nome'] = df_users[col_nome].astype(str).str.strip().str.upper()
+                        df_users['Chave_Nome'] = df_users['Chave_Nome'].apply(limpar_nome_duplo)
+                        df_users = df_users.drop_duplicates(subset=['Chave_Nome'], keep='first')
                         nomes_mestre = df_users['Chave_Nome'].tolist()
 
                         def buscar_melhor_match(nome):
                             if pd.isna(nome) or str(nome).strip() == "": return str(nome)
-                            nome = str(nome).strip().upper()
+                            nome = " ".join(str(nome).strip().split()).upper()
                             if nome in nomes_mestre: return nome
                             for nm in nomes_mestre:
                                 if nome in nm or nm in nome: return nm
@@ -1077,31 +1090,32 @@ else:
                                     if len(pm) >= 2 and partes[0] == pm[0] and partes[1] == pm[1]: return nm
                             return nome
 
+                        # Processamento Performance
                         col_ade = next((c for c in df_perf.columns if 'ADER' in str(c).upper()), None)
                         col_conf = next((c for c in df_perf.columns if 'CONFOR' in str(c).upper()), None)
                         col_agente = next((c for c in df_perf.columns if 'AGENTE' in str(c).upper()), None)
                         
                         df_perf['Aderência (%)'] = df_perf[col_ade].apply(limpar_porcentagem)
                         df_perf['Conformidade (%)'] = df_perf[col_conf].apply(limpar_porcentagem)
-                        df_perf['Chave_Nome'] = df_perf[col_agente].astype(str).str.strip().str.upper()
-                        df_perf['Chave_Nome'] = df_perf['Chave_Nome'].apply(buscar_melhor_match)
+                        df_perf['Chave_Nome'] = df_perf[col_agente].apply(buscar_melhor_match)
+                        df_perf_agg = df_perf.groupby('Chave_Nome').agg({'Aderência (%)': 'mean', 'Conformidade (%)': 'mean'}).reset_index()
 
+                        # Processamento Faltas
                         col_agente_falta = next((c for c in df_faltas_diarias.columns if 'AGENTE' in str(c).upper()), None)
                         col_conf_falta = next((c for c in df_faltas_diarias.columns if 'CONFOR' in str(c).upper()), None)
                         
-                        df_faltas_diarias['Chave_Nome'] = df_faltas_diarias[col_agente_falta].astype(str).str.strip().str.upper()
-                        df_faltas_diarias['Chave_Nome'] = df_faltas_diarias['Chave_Nome'].apply(buscar_melhor_match)
+                        df_faltas_diarias['Chave_Nome'] = df_faltas_diarias[col_agente_falta].apply(buscar_melhor_match)
                         df_faltas_diarias['Valor_Conformidade'] = pd.to_numeric(df_faltas_diarias[col_conf_falta].astype(str).str.replace(',', '.'), errors='coerce')
                         df_faltas_diarias['Falta_Dia'] = (df_faltas_diarias['Valor_Conformidade'] == 0.0).astype(int)
                         
                         df_faltas_agg = df_faltas_diarias.groupby('Chave_Nome').agg({'Falta_Dia': 'sum'}).reset_index()
                         df_faltas_agg.rename(columns={'Falta_Dia': 'Faltas'}, inplace=True)
                         
-                        df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
-                        df_ret['Chave_Nome'] = df_ret['Chave_Nome'].apply(buscar_melhor_match)
+                        # Processamento Retenção
+                        df_ret['Chave_Nome'] = df_ret['responsavel'].apply(buscar_melhor_match)
                         df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
-                        df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral calculado'], axis=1).fillna(0)
+                        df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
                         
                         col_rt_fibra = next((c for c in df_ret.columns if 'FIBRA' in str(c).upper() and 'VALID' in str(c).upper()), None)
                         if not col_rt_fibra: col_rt_fibra = next((c for c in df_ret.columns if 'FIBRA' in str(c).upper()), None)
@@ -1110,16 +1124,23 @@ else:
                         df_ret['RT_Fibra_Validas'] = pd.to_numeric(df_ret[col_rt_fibra], errors='coerce').fillna(0) if col_rt_fibra else pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
                         df_ret['RT_Adicional_Validas'] = pd.to_numeric(df_ret[col_rt_adic], errors='coerce').fillna(0) if col_rt_adic else 0
                         
-                        # PROCESSAMENTO GAMIFICAÇÃO
+                        df_ret_agg = df_ret.groupby('Chave_Nome').agg({
+                            'RT geral valido': 'sum',
+                            'RT geral calculado': 'sum',
+                            'Taxa_Retencao_Original': 'mean',
+                            'RT_Fibra_Validas': 'sum',
+                            'RT_Adicional_Validas': 'sum'
+                        }).reset_index()
+
+                        # Processamento Gamificação
                         col_gam_colab = next((c for c in df_gam.columns if 'COLABORADOR' in str(c).upper()), None)
                         col_gam_diam = next((c for c in df_gam.columns if 'DIAMANTES' in str(c).upper()), None)
-                        df_gam['Chave_Nome'] = df_gam[col_gam_colab].astype(str).str.strip().str.upper()
-                        df_gam['Chave_Nome'] = df_gam['Chave_Nome'].apply(buscar_melhor_match)
+                        df_gam['Chave_Nome'] = df_gam[col_gam_colab].apply(buscar_melhor_match)
                         df_gam['Diamantes'] = pd.to_numeric(df_gam[col_gam_diam], errors='coerce').fillna(0)
                         df_gam_agg = df_gam.groupby('Chave_Nome').agg({'Diamantes': 'sum'}).reset_index()
 
-                        df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
-                        df_chat['Chave_Nome'] = df_chat['Chave_Nome'].apply(buscar_melhor_match)
+                        # Processamento Chat
+                        df_chat['Chave_Nome'] = df_chat['Nome do agente'].apply(buscar_melhor_match)
                         col_tpc_chat = next((c for c in df_chat.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
                         agg_chat = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
                         if col_tpc_chat: agg_chat[col_tpc_chat] = 'mean'
@@ -1131,8 +1152,8 @@ else:
                             df_chat_agg.rename(columns={col_tpc_chat: 'TPC Chat (ms)'}, inplace=True)
                             df_chat_agg['TPC Chat (Seg)'] = df_chat_agg['TPC Chat (ms)'].apply(ms_para_segundos)
                         
-                        df_voz['Chave_Nome'] = df_voz['Nome do agente'].astype(str).str.strip().str.upper()
-                        df_voz['Chave_Nome'] = df_voz['Chave_Nome'].apply(buscar_melhor_match)
+                        # Processamento Voz
+                        df_voz['Chave_Nome'] = df_voz['Nome do agente'].apply(buscar_melhor_match)
                         col_tpc_voz = next((c for c in df_voz.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
                         agg_voz = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
                         if col_tpc_voz: agg_voz[col_tpc_voz] = 'mean'
@@ -1144,20 +1165,21 @@ else:
                             df_voz_agg.rename(columns={col_tpc_voz: 'TPC Voz (ms)'}, inplace=True)
                             df_voz_agg['TPC Voz (Seg)'] = df_voz_agg['TPC Voz (ms)'].apply(ms_para_segundos)
                         
-                        df_pesq['Chave_Nome'] = df_pesq['Atendente'].astype(str).str.strip().str.upper()
-                        df_pesq['Chave_Nome'] = df_pesq['Chave_Nome'].apply(buscar_melhor_match)
+                        # Processamento Pesquisa
+                        df_pesq['Chave_Nome'] = df_pesq['Atendente'].apply(buscar_melhor_match)
                         df_pesq['CSAT_Num'] = pd.to_numeric(df_pesq['CSAT'], errors='coerce')
                         df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(Total_Pesq_CSAT=('CSAT_Num', 'count'), Boas_Pesq_CSAT=('CSAT_Num', lambda x: (x >= 4).sum()), Total_Pesq_IR=('IR', 'count'), Sim_Pesq_IR=('IR', lambda x: (x.astype(str).str.strip().str.upper() == 'SIM').sum())).reset_index()
 
-                        df_novo = pd.merge(df_users, df_perf[['Chave_Nome', 'Aderência (%)', 'Conformidade (%)']], on='Chave_Nome', how='left')
-                        df_novo = pd.merge(df_novo, df_faltas_agg[['Chave_Nome', 'Faltas']], on='Chave_Nome', how='left')
-                        df_novo = pd.merge(df_novo, df_ret[['Chave_Nome', 'RT geral valido', 'RT geral calculado', 'Taxa_Retencao_Original', 'RT_Fibra_Validas', 'RT_Adicional_Validas']], on='Chave_Nome', how='left')
+                        # Merge Final Seguro
+                        df_novo = pd.merge(df_users, df_perf_agg, on='Chave_Nome', how='left')
+                        df_novo = pd.merge(df_novo, df_faltas_agg, on='Chave_Nome', how='left')
+                        df_novo = pd.merge(df_novo, df_ret_agg, on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_chat_agg, on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_voz_agg, on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_pesq_agg, on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_gam_agg, on='Chave_Nome', how='left')
                         
-                        df_novo['Nome Exibição'] = df_novo['Chave_Nome'].str.title()
+                        df_novo['Nome Exibição'] = df_novo['Chave_Nome'].apply(limpar_nome_duplo)
                         df_novo['Mês'] = mes_up
                         df_novo['Ano'] = str(ano_up)
                         
@@ -1637,7 +1659,7 @@ else:
                     elif str(meus_dados_cadastrais.get('STATUS', '')).strip().upper() == 'AFASTADO': status_agente_mes = 'Afastado'
                     minhas_faltas = int(dados['Faltas']) if 'Faltas' in df_periodo.columns and pd.notna(dados.get('Faltas')) and status_agente_mes == 'Ativo' else 0
                     
-                    # CÁLCULO DE COMISSÃO DO AGENTE (Ajustado com Diamantes)
+                    # CÁLCULO DE COMISSÃO DO AGENTE
                     minha_comissao = calcular_comissao_rv(
                         taxa_ret=my_tx_ret,
                         vol_fibra=dados.get('RT_Fibra_Validas', 0.0),
