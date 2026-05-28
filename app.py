@@ -257,7 +257,7 @@ def obter_ultima_atualizacao():
 # MOTOR DE CÁLCULO DE COMISSÃO + GAMIFICAÇÃO
 # ==========================================
 def calcular_comissao_rv(taxa_ret, vol_fibra, vol_adic, diamantes):
-    """Calcula a RV combinando volume de retenção, tabela de percentual e bônus de gamificação (Diamantes)"""
+    """Calcula a RV combinando volume de retenção, tabela de percentual corrigida e bônus de gamificação (Diamantes)"""
     taxa_ret = float(taxa_ret) if pd.notna(taxa_ret) else 0.0
     vol_fibra = float(vol_fibra) if pd.notna(vol_fibra) else 0.0
     vol_adic = float(vol_adic) if pd.notna(vol_adic) else 0.0
@@ -296,6 +296,7 @@ def carregar_dados_mestre_seguro():
     df = ler_csv_via_api_github("dados_consolidados_master.csv")
     df['text_ano'] = df['Ano'].astype(str).str.strip()
     df['text_mes'] = df['Mês'].astype(str).str.strip().str.title()
+    df['Periodo_Competencia'] = df['text_mes'] + "/" + df['text_ano']
     return df
 
 def obter_dados_historicos(df, agente="Todos"):
@@ -466,7 +467,7 @@ else:
     
     st.sidebar.markdown("---")
     info_atualizacao = obter_ultima_atualizacao()
-    st.sidebar.info(f"🔄 **Base atualizada em:**\n{info_atualizacao}")
+    st.sidebar.info(f"🔄 **Base atualizada em:**\n{info_atualizacao} (BRT)")
     
     st.sidebar.markdown("---")
     if st.sidebar.button("🚪 Sair do Sistema (Logout)", use_container_width=True):
@@ -498,15 +499,16 @@ else:
                 return 'Ativo'
             df_periodo_mapeado['Status_Dinamico'] = df_periodo_mapeado.apply(identificar_status_unificado, axis=1)
 
-        aba_dashboard, aba_retencao, aba_comissao, aba_ponto, aba_equipe, aba_ferias, aba_relatorio, aba_upload = st.tabs([
-            "📊 Dashboard Geral", 
-            "🎯 Inteligência de Retenção",
-            "💰 Comissões (RV)",
-            "⏰ Banco de Horas",
-            "👥 Gestão da Equipe",
-            "🌴 Calendário de Férias",
+        aba_dashboard, aba_retencao, aba_comissao, aba_ponto, aba_equipe, aba_ferias, aba_relatorio, aba_feedback, aba_upload = st.tabs([
+            "📊 Dashboard", 
+            "🎯 Retenção",
+            "💰 Comissões",
+            "⏰ B. Horas",
+            "👥 Equipe",
+            "🌴 Férias",
             "📑 Relatório Diretoria",
-            "⚙️ Consolidação (Upload)"
+            "📈 Avaliação & Feedback",
+            "⚙️ Upload"
         ])
         
         with aba_retencao:
@@ -604,6 +606,7 @@ else:
                 
                 st.markdown("#### 📋 Tabela Detalhada de Comissões e Gamificação")
                 
+                # Formatando os valores como string de forma nativa para evitar que erros de tipagem do Streamlit destruam a visualização
                 df_mostrar_fmt = df_mostrar.copy()
                 df_mostrar_fmt['Diamantes'] = df_mostrar_fmt['Diamantes'].apply(lambda x: f"{x:.0f}")
                 df_mostrar_fmt['Retenções (Fibra/5G)'] = df_mostrar_fmt['Retenções (Fibra/5G)'].apply(lambda x: f"{x:.0f}")
@@ -873,6 +876,119 @@ else:
             else:
                 st.info("Não há dados históricos suficientes para gerar o relatório consolidado.")
 
+        with aba_feedback:
+            st.header("📈 Avaliação de Desempenho e Feedback Contínuo")
+            st.markdown("Mapeamento de calor para identificar operadores com desvios crônicos de performance ao longo do tempo selecionado.")
+            
+            if base_mestre_existe and not df_completo.empty:
+                df_feed = df_completo.copy()
+                
+                if 'Periodo_Competencia' not in df_feed.columns:
+                    df_feed['Periodo_Competencia'] = df_feed['text_mes'].str.title() + "/" + df_feed['text_ano']
+                    
+                meses_map_feed = {m: i for i, m in enumerate(MESES, 1)}
+                df_feed['Mes_Num'] = df_feed['text_mes'].map(meses_map_feed)
+                df_feed = df_feed.dropna(subset=['Mes_Num'])
+                df_feed['Ordem_Feed'] = df_feed['text_ano'].astype(str) + "-" + df_feed['Mes_Num'].astype(int).astype(str).str.zfill(2)
+                
+                periodos_disponiveis = df_feed.sort_values('Ordem_Feed', ascending=False)['Periodo_Competencia'].unique().tolist()
+                
+                st.markdown("#### ⏳ Selecione o Período de Avaliação")
+                periodos_selecionados = st.multiselect("Filtre um ou múltiplos meses para gerar a média consolidada (ex: Último Trimestre):", periodos_disponiveis, default=periodos_disponiveis[:3] if len(periodos_disponiveis) >= 3 else periodos_disponiveis)
+                
+                if not periodos_selecionados:
+                    st.warning("Selecione pelo menos um mês para gerar o relatório.")
+                else:
+                    df_feed_filtrado = df_feed[df_feed['Periodo_Competencia'].isin(periodos_selecionados)].copy()
+                    
+                    # Preparando dados para agregação por Agente
+                    cols_to_num = ['Total_Pesq_CSAT', 'Boas_Pesq_CSAT', 'Total_Pesq_IR', 'Sim_Pesq_IR', 'RT geral valido', 'RT geral calculado', 'Faltas', 'Aderência (%)', 'Conformidade (%)']
+                    for c in cols_to_num:
+                        if c in df_feed_filtrado.columns:
+                            df_feed_filtrado[c] = pd.to_numeric(df_feed_filtrado[c], errors='coerce').fillna(0)
+                        else:
+                            df_feed_filtrado[c] = 0.0
+                            
+                    # Agrupando pelo nome do operador
+                    df_feed_agg = df_feed_filtrado.groupby('Nome Exibição').agg({
+                        'Total_Pesq_CSAT': 'sum',
+                        'Boas_Pesq_CSAT': 'sum',
+                        'Total_Pesq_IR': 'sum',
+                        'Sim_Pesq_IR': 'sum',
+                        'RT geral valido': 'sum',
+                        'RT geral calculado': 'sum',
+                        'Faltas': 'sum',
+                        'Aderência (%)': 'mean',
+                        'Conformidade (%)': 'mean'
+                    }).reset_index()
+                    
+                    df_feed_agg['CSAT Média (%)'] = df_feed_agg.apply(lambda r: (r['Boas_Pesq_CSAT'] / r['Total_Pesq_CSAT'] * 100) if r['Total_Pesq_CSAT'] > 0 else 0, axis=1)
+                    df_feed_agg['IR Média (%)'] = df_feed_agg.apply(lambda r: (r['Sim_Pesq_IR'] / r['Total_Pesq_IR'] * 100) if r['Total_Pesq_IR'] > 0 else 0, axis=1)
+                    df_feed_agg['Retenção Média (%)'] = df_feed_agg.apply(lambda r: (r['RT geral valido'] / r['RT geral calculado'] * 100) if r['RT geral calculado'] > 0 else 0, axis=1)
+                    
+                    # Regras de Alerta (Onde a pessoa precisa melhorar?)
+                    def checar_alertas(row):
+                        alertas = []
+                        if row['CSAT Média (%)'] > 0 and row['CSAT Média (%)'] < META_CSAT: alertas.append("⭐ CSAT")
+                        if row['IR Média (%)'] > 0 and row['IR Média (%)'] < META_IR: alertas.append("🎯 IR")
+                        if row['Retenção Média (%)'] > 0 and row['Retenção Média (%)'] < META_RETENCAO: alertas.append("📈 Retenção")
+                        if row['Aderência (%)'] > 0 and row['Aderência (%)'] < META_ADERENCIA: alertas.append("⏱️ Aderência")
+                        if row['Conformidade (%)'] > 0 and row['Conformidade (%)'] < META_CONFORMIDADE: alertas.append("📅 Conformidade")
+                        if row['Faltas'] > 0: alertas.append("❌ Faltas")
+                        return ", ".join(alertas) if alertas else "✅ Dentro da Meta"
+                        
+                    def contar_alertas(row):
+                        return 0 if row['Indicadores Críticos'] == "✅ Dentro da Meta" else len(row['Indicadores Críticos'].split(","))
+
+                    df_feed_agg['Indicadores Críticos'] = df_feed_agg.apply(checar_alertas, axis=1)
+                    df_feed_agg['Qtd. Alertas'] = df_feed_agg.apply(contar_alertas, axis=1)
+                    
+                    # Organizar os piores casos primeiro
+                    df_feed_agg = df_feed_agg.sort_values(by=['Qtd. Alertas', 'Retenção Média (%)'], ascending=[False, True])
+                    
+                    # Separar a tabela final de exibição
+                    colunas_feed_mostrar = ['Nome Exibição', 'Qtd. Alertas', 'Indicadores Críticos', 'Retenção Média (%)', 'Faltas', 'CSAT Média (%)', 'IR Média (%)', 'Aderência (%)', 'Conformidade (%)']
+                    df_feed_exibir = df_feed_agg[colunas_feed_mostrar].copy()
+                    
+                    def cor_alerta(val):
+                        if val >= 3: return 'color: white; background-color: #dc3545; font-weight: bold;'
+                        elif val >= 1: return 'color: #856404; background-color: #fff3cd; font-weight: bold;'
+                        return 'color: #155724; background-color: #d4edda;'
+                        
+                    st.markdown("---")
+                    
+                    total_atencao = len(df_feed_exibir[df_feed_exibir['Qtd. Alertas'] >= 3])
+                    total_ok = len(df_feed_exibir[df_feed_exibir['Qtd. Alertas'] == 0])
+                    
+                    c_f1, c_f2 = st.columns(2)
+                    with c_f1:
+                        st.markdown(f"<div class='kpi-card' style='border-left-color: #dc3545;'><div class='kpi-title'>Zona de Risco (Feedback Urgente)</div><div class='kpi-value' style='color:#dc3545;'>{total_atencao} Operadores</div><div style='font-size:11px;color:#6c757d;'>Falhando em 3 ou mais indicadores na média do período</div></div>", unsafe_allow_html=True)
+                    with c_f2:
+                        st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Alta Performance (Constância)</div><div class='kpi-value' style='color:#28a745;'>{total_ok} Operadores</div><div style='font-size:11px;color:#6c757d;'>Batendo todas as metas dentro do período selecionado</div></div>", unsafe_allow_html=True)
+
+                    st.markdown("#### 🚨 Mapeamento de Risco por Operador")
+                    st.markdown("Esta tabela já está classificada para mostrar os operadores com maior quantidade de alertas no topo. Utilize os pontos apontados em **Indicadores Críticos** para criar um Plano de Ação Personalizado (PDI) ou justificar eventuais desligamentos.")
+                    
+                    st.dataframe(df_feed_exibir.style.map(cor_alerta, subset=['Qtd. Alertas']).format({
+                        'Retenção Média (%)': '{:.2f}%',
+                        'Faltas': '{:.0f}',
+                        'CSAT Média (%)': '{:.1f}%',
+                        'IR Média (%)': '{:.1f}%',
+                        'Aderência (%)': '{:.1f}%',
+                        'Conformidade (%)': '{:.1f}%'
+                    }), use_container_width=True)
+                    
+                    csv_feed = df_feed_exibir.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Exportar Lista de Acompanhamento (CSV)",
+                        data=csv_feed,
+                        file_name="relatorio_feedbacks_desligamentos.csv",
+                        mime="text/csv",
+                        type="secondary"
+                    )
+            else:
+                st.info("Nenhum dado consolidado encontrado para gerar as avaliações.")
+
         with aba_upload:
             st.header("⚙️ Central de Consolidação de Relatórios")
             
@@ -907,7 +1023,7 @@ else:
             st.markdown("### 📋 Status da Validação")
             c_chk1, c_chk2, c_chk3, c_chk4, c_chk5, c_chk6, c_chk7 = st.columns(7)
             with c_chk1: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Aderência e Conformidade'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>1. Ade & Conf</b></div>", unsafe_allow_html=True)
-            with c_chk2: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Faltas Diárias'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>2. Faltas</b></div>", unsafe_allow_html=True)
+            with c_chk2: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Faltas Diárias'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>2. Faltas WFM</b></div>", unsafe_allow_html=True)
             with c_chk3: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Pesquisa (CSAT/IR)'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>3. Pesquisas</b></div>", unsafe_allow_html=True)
             with c_chk4: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Chat'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>4. Chat</b></div>", unsafe_allow_html=True)
             with c_chk5: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Voz'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>5. Voz</b></div>", unsafe_allow_html=True)
@@ -1094,7 +1210,7 @@ else:
                     (df_calculado['Faltas'] > 0)
                 ].copy()
                 
-                # APLICA CÁLCULO DE COMISSÃO E GAMIFICAÇÃO
+                # APLICA CÁLCULO DE COMISSÃO
                 if 'Diamantes' not in df_calculado.columns: df_calculado['Diamantes'] = 0
                 df_calculado['Comissão (R$)'] = df_calculado.apply(lambda r: calcular_comissao_rv(
                     r.get('% Retenção', 0.0),
