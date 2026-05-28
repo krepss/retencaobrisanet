@@ -127,16 +127,6 @@ st.markdown("""
         .btn-wiki:hover {
             background-color: #0056b3;
         }
-        .faixa-ativa {
-            background-color: #d4edda !important;
-            color: #155724 !important;
-            font-weight: bold;
-            border-left: 4px solid #28a745;
-        }
-        .faixa-inativa {
-            background-color: #f8f9fa;
-            color: #6c757d;
-        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -232,6 +222,7 @@ def ms_para_segundos(ms):
 
 def limpar_nome_duplo(nome):
     if pd.isna(nome): return ""
+    # Remove espaços extras duplos e coloca no formato Title Case correto
     return " ".join(str(nome).strip().split()).title()
 
 def calcular_tempo_empresa(data_str):
@@ -1115,6 +1106,7 @@ else:
                         
                         col_nome = 'COLABORADOR' if 'COLABORADOR' in df_users.columns else 'Nome'
                         
+                        # Limpa chaves na Base de Usuários para criar a lista Mestre
                         df_users['Chave_Nome'] = df_users[col_nome].astype(str).str.strip().str.upper()
                         df_users['Chave_Nome'] = df_users['Chave_Nome'].apply(limpar_nome_duplo)
                         df_users = df_users.drop_duplicates(subset=['Chave_Nome'], keep='first')
@@ -1136,6 +1128,7 @@ else:
                                     if len(pm) >= 2 and partes[0] == pm[0] and partes[1] == pm[1]: return nm
                             return nome
 
+                        # Processamento Performance
                         col_ade = next((c for c in df_perf.columns if 'ADER' in str(c).upper()), None)
                         col_conf = next((c for c in df_perf.columns if 'CONFOR' in str(c).upper()), None)
                         col_agente = next((c for c in df_perf.columns if 'AGENTE' in str(c).upper()), None)
@@ -1146,6 +1139,7 @@ else:
                         df_perf['Chave_Nome'] = df_perf['Chave_Nome'].apply(buscar_melhor_match)
                         df_perf_agg = df_perf.groupby('Chave_Nome').agg({'Aderência (%)': 'mean', 'Conformidade (%)': 'mean'}).reset_index()
 
+                        # Processamento Faltas
                         col_agente_falta = next((c for c in df_faltas_diarias.columns if 'AGENTE' in str(c).upper()), None)
                         col_conf_falta = next((c for c in df_faltas_diarias.columns if 'CONFOR' in str(c).upper()), None)
                         
@@ -1157,11 +1151,12 @@ else:
                         df_faltas_agg = df_faltas_diarias.groupby('Chave_Nome').agg({'Falta_Dia': 'sum'}).reset_index()
                         df_faltas_agg.rename(columns={'Falta_Dia': 'Faltas'}, inplace=True)
                         
+                        # Processamento Retenção
                         df_ret['Chave_Nome'] = df_ret['responsavel'].astype(str).str.strip().str.upper()
                         df_ret['Chave_Nome'] = df_ret['Chave_Nome'].apply(buscar_melhor_match)
                         df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
-                        df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
+                        df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral calculado'], axis=1).fillna(0)
                         
                         col_rt_fibra = next((c for c in df_ret.columns if 'FIBRA' in str(c).upper() and 'VALID' in str(c).upper()), None)
                         if not col_rt_fibra: col_rt_fibra = next((c for c in df_ret.columns if 'FIBRA' in str(c).upper()), None)
@@ -1178,6 +1173,7 @@ else:
                             'RT_Adicional_Validas': 'sum'
                         }).reset_index()
 
+                        # Processamento Gamificação
                         col_gam_colab = next((c for c in df_gam.columns if 'COLABORADOR' in str(c).upper()), None)
                         col_gam_diam = next((c for c in df_gam.columns if 'DIAMANTES' in str(c).upper()), None)
                         df_gam['Chave_Nome'] = df_gam[col_gam_colab].astype(str).str.strip().str.upper()
@@ -1185,6 +1181,7 @@ else:
                         df_gam['Diamantes'] = pd.to_numeric(df_gam[col_gam_diam], errors='coerce').fillna(0)
                         df_gam_agg = df_gam.groupby('Chave_Nome').agg({'Diamantes': 'sum'}).reset_index()
 
+                        # Processamento Chat
                         df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
                         df_chat['Chave_Nome'] = df_chat['Chave_Nome'].apply(buscar_melhor_match)
                         col_tpc_chat = next((c for c in df_chat.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
@@ -1198,6 +1195,7 @@ else:
                             df_chat_agg.rename(columns={col_tpc_chat: 'TPC Chat (ms)'}, inplace=True)
                             df_chat_agg['TPC Chat (Seg)'] = df_chat_agg['TPC Chat (ms)'].apply(ms_para_segundos)
                         
+                        # Processamento Voz
                         df_voz['Chave_Nome'] = df_voz['Nome do agente'].astype(str).str.strip().str.upper()
                         df_voz['Chave_Nome'] = df_voz['Chave_Nome'].apply(buscar_melhor_match)
                         col_tpc_voz = next((c for c in df_voz.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
@@ -1211,11 +1209,13 @@ else:
                             df_voz_agg.rename(columns={col_tpc_voz: 'TPC Voz (ms)'}, inplace=True)
                             df_voz_agg['TPC Voz (Seg)'] = df_voz_agg['TPC Voz (ms)'].apply(ms_para_segundos)
                         
+                        # Processamento Pesquisa
                         df_pesq['Chave_Nome'] = df_pesq['Atendente'].astype(str).str.strip().str.upper()
                         df_pesq['Chave_Nome'] = df_pesq['Chave_Nome'].apply(buscar_melhor_match)
                         df_pesq['CSAT_Num'] = pd.to_numeric(df_pesq['CSAT'], errors='coerce')
                         df_pesq_agg = df_pesq.groupby('Chave_Nome').agg(Total_Pesq_CSAT=('CSAT_Num', 'count'), Boas_Pesq_CSAT=('CSAT_Num', lambda x: (x >= 4).sum()), Total_Pesq_IR=('IR', 'count'), Sim_Pesq_IR=('IR', lambda x: (x.astype(str).str.strip().str.upper() == 'SIM').sum())).reset_index()
 
+                        # Merge Final Seguro
                         df_novo = pd.merge(df_users, df_perf_agg, on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_faltas_agg, on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_ret_agg, on='Chave_Nome', how='left')
@@ -1319,6 +1319,7 @@ else:
 
             with aba_desempenho:
                 st.markdown(f"<p style='color: #6c757d; font-size: 16px;'>Acompanhe o seu desempenho e metas referentes a <b>{mes_view} de {ano_view}</b>.</p>", unsafe_allow_html=True)
+                st.info("💡 **Aviso Importante:** Caso esteja acompanhando o **mês vigente**, os indicadores e valores são apenas **estimativas parciais**. O resultado definitivo será consolidado apenas no fechamento do mês.")
                 
                 st.markdown("### 📋 Informações Cadastrais")
                 c_info1, c_info2, c_info3 = st.columns(3)
@@ -1351,6 +1352,7 @@ else:
                     elif str(meus_dados_cadastrais.get('STATUS', '')).strip().upper() == 'AFASTADO': status_agente_mes = 'Afastado'
                     minhas_faltas = int(dados['Faltas']) if 'Faltas' in df_periodo.columns and pd.notna(dados.get('Faltas')) and status_agente_mes == 'Ativo' else 0
                     
+                    # CÁLCULO DE COMISSÃO DO AGENTE
                     minha_comissao = calcular_comissao_rv(
                         taxa_ret=my_tx_ret,
                         vol_fibra=dados.get('RT_Fibra_Validas', 0.0),
@@ -1453,6 +1455,7 @@ else:
             with aba_comissao:
                 st.header("💰 Detalhamento da Remuneração Variável (RV)")
                 st.markdown(f"Acompanhe abaixo como o seu bônus de **{mes_view}** foi gerado.")
+                st.info("⚠️ **Aviso de Fechamento:** Se este for o mês atual, os valores abaixo ainda podem mudar! Continue acelerando suas retenções para garantir o gatilho e a melhor faixa de comissão.")
                 
                 if not meus_dados.empty:
                     vol_fibra_ag = float(dados.get('RT_Fibra_Validas', 0.0))
