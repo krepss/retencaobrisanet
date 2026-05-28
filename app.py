@@ -13,7 +13,7 @@ from datetime import datetime
 # ==========================================
 st.set_page_config(page_title="Sistema Operacional 360", page_icon="🎯", layout="wide")
 
-GESTOR_EMAIL = "gestor"
+GESTOR_EMAIL = "gestao"
 GESTOR_SENHA = "admin"
 
 # METAS OFICIAIS DA OPERAÇÃO BRISANET
@@ -238,35 +238,43 @@ def calcular_tempo_empresa(data_str):
         return "Formato inválido"
 
 # ==========================================
-# MOTOR DE CÁLCULO DE COMISSÃO (CORRIGIDO)
+# MOTOR DE CÁLCULO DE COMISSÃO + GAMIFICAÇÃO
 # ==========================================
-def calcular_comissao_rv(taxa_ret, vol_fibra, vol_adic):
-    """Calcula a RV baseada exclusivamente no volume de retenção e tabela de percentual corrigida"""
+def calcular_comissao_rv(taxa_ret, vol_fibra, vol_adic, diamantes):
+    """Calcula a RV combinando volume de retenção, tabela de percentual e bônus de gamificação (Diamantes)"""
     taxa_ret = float(taxa_ret) if pd.notna(taxa_ret) else 0.0
     vol_fibra = float(vol_fibra) if pd.notna(vol_fibra) else 0.0
     vol_adic = float(vol_adic) if pd.notna(vol_adic) else 0.0
+    diamantes = int(diamantes) if pd.notna(diamantes) else 0
     
-    # 1. Gatilho Único de Volume (80% de 220 = 176 peças totais)
-    if (vol_fibra + vol_adic) < 176:
-        return 0.0
-        
-    # 2. Faixas da Tabela de Retenção atualizadas
-    multiplicador = 0.0
-    if taxa_ret >= 65.00:
-        multiplicador = 7.50
-    elif taxa_ret >= 60.00:
-        multiplicador = 6.00
-    elif taxa_ret >= 55.00:
-        multiplicador = 4.80
-    elif taxa_ret >= 50.00:
-        multiplicador = 3.60
-    elif taxa_ret >= 46.00:
-        multiplicador = 2.40
+    vol_total = vol_fibra + vol_adic
+    atingiu_gatilho = vol_total >= 176
+    
+    valor_diamantes = diamantes * 0.50
+    
+    if atingiu_gatilho:
+        # Bateu meta de retenção: Ganha RV das Retenções + 100% dos Diamantes
+        multiplicador = 0.0
+        if taxa_ret >= 65.00:
+            multiplicador = 7.50
+        elif taxa_ret >= 60.00:
+            multiplicador = 6.00
+        elif taxa_ret >= 55.00:
+            multiplicador = 4.80
+        elif taxa_ret >= 50.00:
+            multiplicador = 3.60
+        elif taxa_ret >= 46.00:
+            multiplicador = 2.40
+        else:
+            multiplicador = 0.00
+            
+        comissao_retencao = (vol_fibra * multiplicador) + (vol_adic * 1.50)
+        comissao_total = comissao_retencao + valor_diamantes
     else:
-        multiplicador = 0.00 # Abaixo de 46% a fibra não pontua
+        # Não bateu meta de retenção: Perde a RV de retenção e ganha só 50% dos Diamantes
+        comissao_total = valor_diamantes * 0.50
         
-    # 3. Retorna o valor exato (Fibra * Multiplicador da Faixa) + (Adicionais * R$ 1.50 fixo)
-    return (vol_fibra * multiplicador) + (vol_adic * 1.50)
+    return comissao_total
 
 @st.cache_data(ttl=5)
 def carregar_dados_mestre_seguro():
@@ -543,42 +551,45 @@ else:
                 if 'Taxa_Retencao_Original' not in df_com.columns: df_com['Taxa_Retencao_Original'] = 0.0
                 if 'RT_Fibra_Validas' not in df_com.columns: df_com['RT_Fibra_Validas'] = 0.0
                 if 'RT_Adicional_Validas' not in df_com.columns: df_com['RT_Adicional_Validas'] = 0.0
+                if 'Diamantes' not in df_com.columns: df_com['Diamantes'] = 0
                 
                 df_com['Vol_Fibra'] = pd.to_numeric(df_com['RT_Fibra_Validas'], errors='coerce').fillna(0)
                 df_com['Vol_Adic'] = pd.to_numeric(df_com['RT_Adicional_Validas'], errors='coerce').fillna(0)
                 df_com['Total_Pecas'] = df_com['Vol_Fibra'] + df_com['Vol_Adic']
                 df_com['Taxa_Ret'] = pd.to_numeric(df_com['Taxa_Retencao_Original'], errors='coerce').fillna(0)
+                df_com['Diamantes_Val'] = pd.to_numeric(df_com['Diamantes'], errors='coerce').fillna(0)
                 
-                df_com['Comissão (R$)'] = df_com.apply(lambda r: calcular_comissao_rv(r['Taxa_Ret'], r['Vol_Fibra'], r['Vol_Adic']), axis=1)
-                df_com['Atingiu Gatilho (176)?'] = df_com['Total_Pecas'].apply(lambda x: '✅ Sim' if x >= 176 else '❌ Não')
+                df_com['Comissão (R$)'] = df_com.apply(lambda r: calcular_comissao_rv(r['Taxa_Ret'], r['Vol_Fibra'], r['Vol_Adic'], r['Diamantes_Val']), axis=1)
+                df_com['Atingiu Gatilho (176)?'] = df_com['Total_Pecas'].apply(lambda x: '✅ Sim' if x >= 176 else '❌ Não (50% Diamantes)')
                 
-                colunas_mostrar = ['Nome Exibição', 'Vol_Fibra', 'Vol_Adic', 'Total_Pecas', 'Atingiu Gatilho (176)?', 'Taxa_Ret', 'Comissão (R$)']
+                colunas_mostrar = ['Nome Exibição', 'Diamantes_Val', 'Vol_Fibra', 'Vol_Adic', 'Total_Pecas', 'Atingiu Gatilho (176)?', 'Taxa_Ret', 'Comissão (R$)']
                 df_mostrar = df_com[colunas_mostrar].sort_values(by=['Comissão (R$)', 'Total_Pecas'], ascending=[False, False])
                 
                 df_mostrar.rename(columns={
                     'Nome Exibição': 'Operador', 
-                    'Vol_Fibra': 'Retenções Principais (Fibra/5G)', 
+                    'Diamantes_Val': 'Diamantes',
+                    'Vol_Fibra': 'Retenções (Fibra/5G)', 
                     'Vol_Adic': 'Retenções Adicionais', 
-                    'Total_Pecas': 'Total Geral', 
+                    'Total_Pecas': 'Total Geral (Peças)', 
                     'Taxa_Ret': 'Taxa de Retenção (%)'
                 }, inplace=True)
                 
                 tot_comissao = df_mostrar['Comissão (R$)'].sum()
-                tot_elegiveis = len(df_mostrar[df_mostrar['Comissão (R$)'] > 0])
+                tot_elegiveis = len(df_mostrar[df_mostrar['Total Geral (Peças)'] >= 176])
                 
                 c_c1, c_c2 = st.columns(2)
                 with c_c1:
                     st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Total de Comissão a Pagar</div><div class='kpi-value' style='color:#28a745;'>R$ {tot_comissao:,.2f}</div></div>", unsafe_allow_html=True)
                 with c_c2:
-                    st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Operadores Elegíveis (Bateram a Meta)</div><div class='kpi-value'>{tot_elegiveis} de {len(df_mostrar)}</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Atingiram a Meta Cheia (>176 peças)</div><div class='kpi-value'>{tot_elegiveis} de {len(df_mostrar)}</div></div>", unsafe_allow_html=True)
                 
-                st.markdown("#### 📋 Tabela Detalhada de Comissões")
+                st.markdown("#### 📋 Tabela Detalhada de Comissões e Gamificação")
                 
-                # Formatando os valores como string de forma nativa para evitar que erros de tipagem do Streamlit destruam a visualização
                 df_mostrar_fmt = df_mostrar.copy()
-                df_mostrar_fmt['Retenções Principais (Fibra/5G)'] = df_mostrar_fmt['Retenções Principais (Fibra/5G)'].apply(lambda x: f"{x:.0f}")
+                df_mostrar_fmt['Diamantes'] = df_mostrar_fmt['Diamantes'].apply(lambda x: f"{x:.0f}")
+                df_mostrar_fmt['Retenções (Fibra/5G)'] = df_mostrar_fmt['Retenções (Fibra/5G)'].apply(lambda x: f"{x:.0f}")
                 df_mostrar_fmt['Retenções Adicionais'] = df_mostrar_fmt['Retenções Adicionais'].apply(lambda x: f"{x:.0f}")
-                df_mostrar_fmt['Total Geral'] = df_mostrar_fmt['Total Geral'].apply(lambda x: f"{x:.0f}")
+                df_mostrar_fmt['Total Geral (Peças)'] = df_mostrar_fmt['Total Geral (Peças)'].apply(lambda x: f"{x:.0f}")
                 df_mostrar_fmt['Taxa de Retenção (%)'] = df_mostrar_fmt['Taxa de Retenção (%)'].apply(lambda x: f"{x:.2f}%")
                 df_mostrar_fmt['Comissão (R$)'] = df_mostrar_fmt['Comissão (R$)'].apply(lambda x: f"R$ {x:,.2f}")
                 
@@ -851,8 +862,8 @@ else:
             ano_up = col_a.selectbox("Ano de competência das planilhas:", ANOS)
             st.markdown("---")
             
-            arquivos_carregados = st.file_uploader("Arraste e solte os 6 arquivos CSV aqui de uma vez", type=["csv"], accept_multiple_files=True)
-            relatorios_identificados = {"Aderência e Conformidade": None, "Faltas Diárias": None, "Pesquisa (CSAT/IR)": None, "Chat": None, "Voz": None, "Retenção": None}
+            arquivos_carregados = st.file_uploader("Arraste e solte os 7 arquivos CSV aqui de uma vez", type=["csv"], accept_multiple_files=True)
+            relatorios_identificados = {"Aderência e Conformidade": None, "Faltas Diárias": None, "Pesquisa (CSAT/IR)": None, "Chat": None, "Voz": None, "Retenção": None, "Gamificação": None}
             if arquivos_carregados:
                 for arquivo in arquivos_carregados:
                     try:
@@ -870,16 +881,19 @@ else:
                             else: relatorios_identificados["Voz"] = arquivo
                         elif any('RESPONSAVEL' in c for c in cols_upper) and any('RETEN' in c for c in cols_upper):
                             relatorios_identificados["Retenção"] = arquivo
+                        elif any('DIAMANTES' in c for c in cols_upper) and any('COLABORADOR' in c for c in cols_upper):
+                            relatorios_identificados["Gamificação"] = arquivo
                     except Exception: pass
 
             st.markdown("### 📋 Status da Validação")
-            c_chk1, c_chk2, c_chk3, c_chk4, c_chk5, c_chk6 = st.columns(6)
+            c_chk1, c_chk2, c_chk3, c_chk4, c_chk5, c_chk6, c_chk7 = st.columns(7)
             with c_chk1: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Aderência e Conformidade'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>1. Ade & Conf</b></div>", unsafe_allow_html=True)
-            with c_chk2: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Faltas Diárias'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>2. Faltas WFM</b></div>", unsafe_allow_html=True)
+            with c_chk2: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Faltas Diárias'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>2. Faltas</b></div>", unsafe_allow_html=True)
             with c_chk3: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Pesquisa (CSAT/IR)'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>3. Pesquisas</b></div>", unsafe_allow_html=True)
             with c_chk4: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Chat'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>4. Chat</b></div>", unsafe_allow_html=True)
             with c_chk5: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Voz'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>5. Voz</b></div>", unsafe_allow_html=True)
             with c_chk6: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Retenção'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>6. Retenção</b></div>", unsafe_allow_html=True)
+            with c_chk7: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Gamificação'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>7. Gamificação</b></div>", unsafe_allow_html=True)
 
             if all(relatorios_identificados.values()) and st.button("🚀 Processar e Atualizar Base Mestre AGORA", type="primary", use_container_width=True):
                 with st.spinner("Consolidando..."):
@@ -890,6 +904,7 @@ else:
                         df_chat = ler_csv_upload_seguro(relatorios_identificados["Chat"])
                         df_voz = ler_csv_upload_seguro(relatorios_identificados["Voz"])
                         df_pesq = ler_csv_upload_seguro(relatorios_identificados["Pesquisa (CSAT/IR)"])
+                        df_gam = ler_csv_upload_seguro(relatorios_identificados["Gamificação"])
                         df_users = ler_csv_via_api_github("dados_usuarios.csv")
                         
                         col_nome = 'COLABORADOR' if 'COLABORADOR' in df_users.columns else 'Nome'
@@ -918,7 +933,6 @@ else:
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
                         df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
                         
-                        # CAPTURA AS NOVAS COLUNAS PARA COMISSÃO
                         col_rt_fibra = next((c for c in df_ret.columns if 'FIBRA' in str(c).upper() and 'VALID' in str(c).upper()), None)
                         if not col_rt_fibra: col_rt_fibra = next((c for c in df_ret.columns if 'FIBRA' in str(c).upper()), None)
                         col_rt_adic = next((c for c in df_ret.columns if 'ADICIONAL' in str(c).upper() and 'VALID' in str(c).upper()), None)
@@ -926,6 +940,13 @@ else:
                         df_ret['RT_Fibra_Validas'] = pd.to_numeric(df_ret[col_rt_fibra], errors='coerce').fillna(0) if col_rt_fibra else pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
                         df_ret['RT_Adicional_Validas'] = pd.to_numeric(df_ret[col_rt_adic], errors='coerce').fillna(0) if col_rt_adic else 0
                         
+                        # PROCESSAMENTO GAMIFICAÇÃO (Diamantes)
+                        col_gam_colab = next((c for c in df_gam.columns if 'COLABORADOR' in str(c).upper()), None)
+                        col_gam_diam = next((c for c in df_gam.columns if 'DIAMANTES' in str(c).upper()), None)
+                        df_gam['Chave_Nome'] = df_gam[col_gam_colab].astype(str).str.strip().str.upper()
+                        df_gam['Diamantes'] = pd.to_numeric(df_gam[col_gam_diam], errors='coerce').fillna(0)
+                        df_gam_agg = df_gam.groupby('Chave_Nome').agg({'Diamantes': 'sum'}).reset_index()
+
                         df_chat['Chave_Nome'] = df_chat['Nome do agente'].astype(str).str.strip().str.upper()
                         col_tpc_chat = next((c for c in df_chat.columns if any(x in str(c).upper() for x in ['TPC', 'PÓS', 'POS', 'TRABALHO'])), None)
                         agg_chat = {'Atendidas': 'sum', 'Tratamento médio': 'mean'}
@@ -960,6 +981,8 @@ else:
                         df_novo = pd.merge(df_novo, df_chat_agg, on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_voz_agg, on='Chave_Nome', how='left')
                         df_novo = pd.merge(df_novo, df_pesq_agg, on='Chave_Nome', how='left')
+                        df_novo = pd.merge(df_novo, df_gam_agg, on='Chave_Nome', how='left')
+                        
                         df_novo['Nome Exibição'] = df_novo['Chave_Nome'].str.title()
                         df_novo['Mês'] = mes_up
                         df_novo['Ano'] = str(ano_up)
@@ -969,6 +992,7 @@ else:
                         if 'Faltas' not in df_novo.columns: df_novo['Faltas'] = 0
                         if 'RT_Fibra_Validas' not in df_novo.columns: df_novo['RT_Fibra_Validas'] = 0.0
                         if 'RT_Adicional_Validas' not in df_novo.columns: df_novo['RT_Adicional_Validas'] = 0.0
+                        if 'Diamantes' not in df_novo.columns: df_novo['Diamantes'] = 0
                         
                         try:
                             df_master_existente = ler_csv_via_api_github("dados_consolidados_master.csv")
@@ -980,6 +1004,7 @@ else:
                             df_master_existente['A_temp'] = df_master_existente['Ano'].astype(str).str.strip()
                             mask_diferente = ~((df_master_existente['M_temp'] == mes_up) & (df_master_existente['A_temp'] == str(ano_up)))
                             df_master_existente = df_master_existente[mask_diferente].drop(columns=['M_temp', 'A_temp', 'text_mes', 'text_ano'], errors='ignore')
+                            if 'Diamantes' not in df_master_existente.columns: df_master_existente['Diamantes'] = 0
                             df_final_salvar = pd.concat([df_master_existente, df_novo], ignore_index=True)
                         else:
                             df_final_salvar = df_novo
@@ -987,6 +1012,7 @@ else:
                         if 'TPC Chat (Seg)' not in df_final_salvar.columns: df_final_salvar['TPC Chat (Seg)'] = 0.0
                         if 'TPC Voz (Seg)' not in df_final_salvar.columns: df_final_salvar['TPC Voz (Seg)'] = 0.0
                         if 'Faltas' not in df_final_salvar.columns: df_final_salvar['Faltas'] = 0
+                        if 'Diamantes' not in df_final_salvar.columns: df_final_salvar['Diamantes'] = 0
                         
                         enviar_para_github("dados_consolidados_master.csv", df_final_salvar.to_csv(index=False))
                         st.cache_data.clear()
@@ -1024,11 +1050,13 @@ else:
                     (df_calculado['Faltas'] > 0)
                 ].copy()
                 
-                # APLICA CÁLCULO DE COMISSÃO
+                # APLICA CÁLCULO DE COMISSÃO E GAMIFICAÇÃO
+                if 'Diamantes' not in df_calculado.columns: df_calculado['Diamantes'] = 0
                 df_calculado['Comissão (R$)'] = df_calculado.apply(lambda r: calcular_comissao_rv(
                     r.get('% Retenção', 0.0),
                     r.get('RT_Fibra_Validas', 0.0),
-                    r.get('RT_Adicional_Validas', 0.0)
+                    r.get('RT_Adicional_Validas', 0.0),
+                    r.get('Diamantes', 0)
                 ), axis=1)
 
                 st.subheader(f"🚨 Auditoria de Desvios de Metas Contratuais ({mes_view}/{ano_view})")
@@ -1434,11 +1462,12 @@ else:
                     elif str(meus_dados_cadastrais.get('STATUS', '')).strip().upper() == 'AFASTADO': status_agente_mes = 'Afastado'
                     minhas_faltas = int(dados['Faltas']) if 'Faltas' in df_periodo.columns and pd.notna(dados.get('Faltas')) and status_agente_mes == 'Ativo' else 0
                     
-                    # CÁLCULO DE COMISSÃO DO AGENTE (Ajustado)
+                    # CÁLCULO DE COMISSÃO DO AGENTE (Ajustado com Diamantes)
                     minha_comissao = calcular_comissao_rv(
                         taxa_ret=my_tx_ret,
                         vol_fibra=dados.get('RT_Fibra_Validas', 0.0),
-                        vol_adic=dados.get('RT_Adicional_Validas', 0.0)
+                        vol_adic=dados.get('RT_Adicional_Validas', 0.0),
+                        diamantes=dados.get('Diamantes', 0)
                     )
                     
                     df_ranking = df_periodo.copy()
@@ -1491,7 +1520,7 @@ else:
                     val_tpc_chat = f"{dados['TPC Chat (Seg)']:.1f}s" if 'TPC Chat (Seg)' in df_periodo.columns and pd.notna(dados.get('TPC Chat (Seg)')) and dados['TPC Chat (Seg)'] > 0 else "--"
                     with co3: st.markdown(f"<div class='kpi-card' style='border-left-color: #17a2b8;'><div class='kpi-title'>Meu TPC Chat</div><div class='kpi-value'>{val_tpc_chat}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_TPC:.0f}s</div></div>", unsafe_allow_html=True)
                     with co4: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Taxa de Retenção</div><div class='kpi-value'>{my_tx_ret:.2f}%</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Meta: {META_RETENCAO:.0f}%</div></div>", unsafe_allow_html=True)
-                    with co5: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745; background-color: #f6ffed;'><div class='kpi-title'>💰 Minha Comissão</div><div class='kpi-value' style='color:#28a745;'>R$ {minha_comissao:,.2f}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>Estimativa (RV)</div></div>", unsafe_allow_html=True)
+                    with co5: st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Diamantes (Gami)</div><div class='kpi-value' style='color:#28a745;'>{int(dados.get('Diamantes', 0))}</div><div style='font-size:11px;color:#6c757d;margin-top:5px;'>No Período</div></div>", unsafe_allow_html=True)
 
                     cv1, cv2, cv3, cv4 = st.columns(4)
                     with cv1: st.markdown(f"<div class='kpi-card' style='border-left-color: #ffc107;'><div class='kpi-title'>Chamadas Voz</div><div class='kpi-value'>{int(dados['Vol. Voz']) if pd.notna(dados['Vol. Voz']) else 0}</div></div>", unsafe_allow_html=True)
