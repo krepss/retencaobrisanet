@@ -222,7 +222,6 @@ def ms_para_segundos(ms):
 
 def limpar_nome_duplo(nome):
     if pd.isna(nome): return ""
-    # Remove espaços extras duplos e coloca no formato Title Case correto
     return " ".join(str(nome).strip().split()).title()
 
 def calcular_tempo_empresa(data_str):
@@ -294,6 +293,56 @@ def calcular_comissao_rv(taxa_ret, vol_fibra, vol_adic, diamantes):
         comissao_total = valor_diamantes * 0.50
         
     return comissao_total
+
+def renderizar_calculadora():
+    st.header("🧮 Simulador de Remuneração Variável")
+    st.markdown("Use esta calculadora para prever a comissão gerada com base em diferentes cenários de atingimento de metas.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("#### 🎯 Insira suas projeções")
+        vol_fibra = st.number_input("Retenções Principais (Fibra/5G/FWA)", min_value=0, value=100, step=1)
+        vol_adic = st.number_input("Retenções Adicionais", min_value=0, value=80, step=1)
+        taxa_ret = st.number_input("Taxa de Retenção (%)", min_value=0.0, max_value=100.0, value=65.0, step=0.1)
+        diamantes = st.number_input("Diamantes Coletados (Gamificação)", min_value=0, value=300, step=10)
+
+    with col2:
+        st.markdown("#### 💰 Resultado da Simulação")
+        
+        vol_total = vol_fibra + vol_adic
+        atingiu_gatilho = vol_total >= 176
+        valor_diamantes_bruto = diamantes * 0.50
+        
+        multiplicador = 0.0
+        if taxa_ret >= 65.00: multiplicador = 7.50
+        elif taxa_ret >= 60.00: multiplicador = 6.00
+        elif taxa_ret >= 55.00: multiplicador = 4.80
+        elif taxa_ret >= 50.00: multiplicador = 3.60
+        elif taxa_ret >= 46.00: multiplicador = 2.40
+        
+        if atingiu_gatilho:
+            valor_fibra = vol_fibra * multiplicador
+            valor_adic = vol_adic * 1.50
+            valor_gamificacao = valor_diamantes_bruto
+            comissao_total = valor_fibra + valor_adic + valor_gamificacao
+            status_gatilho = "✅ Atingido"
+        else:
+            valor_fibra = 0.0
+            valor_adic = 0.0
+            valor_gamificacao = valor_diamantes_bruto * 0.50
+            comissao_total = valor_gamificacao
+            status_gatilho = "❌ Não Atingido (Menos de 176 peças)"
+
+        st.markdown(f"<div class='kpi-card' style='border-left-color: #28a745;'><div class='kpi-title'>Comissão Estimada Final</div><div class='kpi-value' style='color:#28a745;'>R$ {comissao_total:,.2f}</div></div>", unsafe_allow_html=True)
+        
+        st.markdown(f"""
+        **Detalhamento do Cálculo:**
+        - **Total de Peças:** {vol_total:.0f} ({status_gatilho})
+        - **Valor por Retenção Principal:** R$ {multiplicador:,.2f}
+        - **Total Retenções Principais:** R$ {valor_fibra:,.2f}
+        - **Total Retenções Adicionais:** R$ {valor_adic:,.2f}
+        - **Bônus Gamificação:** R$ {valor_gamificacao:,.2f}
+        """)
 
 @st.cache_data(ttl=5)
 def carregar_dados_mestre_seguro():
@@ -513,9 +562,8 @@ else:
                 if mes_ferias == mes_view.upper(): return 'Férias'
                 return 'Ativo'
             df_periodo_mapeado['Status_Dinamico'] = df_periodo_mapeado.apply(identificar_status_unificado, axis=1)
-            df_periodo_mapeado['Nome Exibição'] = df_periodo_mapeado['Nome Exibição'].apply(limpar_nome_duplo)
 
-        aba_dashboard, aba_retencao, aba_comissao, aba_ponto, aba_equipe, aba_ferias, aba_relatorio, aba_feedback, aba_upload = st.tabs([
+        aba_dashboard, aba_retencao, aba_comissao, aba_ponto, aba_equipe, aba_ferias, aba_relatorio, aba_feedback, aba_calculadora, aba_upload = st.tabs([
             "📊 Dashboard", 
             "🎯 Retenção",
             "💰 Comissões",
@@ -524,6 +572,7 @@ else:
             "🌴 Férias",
             "📑 Relatório Diretoria",
             "📈 Avaliação & Feedback",
+            "🧮 Calculadora",
             "⚙️ Upload"
         ])
         
@@ -861,7 +910,7 @@ else:
                 with tab_g3:
                     df_melt_vol = df_final_rel.melt(id_vars='Período', value_vars=['Total Oportunidades Retenção', 'Retenções Realizadas (Vol)', 'Total Avaliações CSAT', 'Absenteísmo (Faltas)'], var_name='Métrica', value_name='Volume')
                     fig_vol = px.bar(df_melt_vol, x='Período', y='Volume', color='Métrica', barmode='group', text='Volume', title="Volumetria Absoluta da Operação", color_discrete_sequence=['#ffc107', '#28a745', '#17a2b8', '#dc3545'])
-                    fig_vol.update_traces(textposition="outside", texttemplate='%{y:.0f}')
+                    fig_vol.update_traces(textposition="outside", texttemplate='%{text:.0f}')
                     st.plotly_chart(fig_vol, use_container_width=True)
                 
                 st.markdown("---")
@@ -1009,6 +1058,9 @@ else:
             else:
                 st.info("Nenhum dado consolidado encontrado para gerar as avaliações.")
 
+        with aba_calculadora:
+            renderizar_calculadora()
+
         with aba_upload:
             st.header("⚙️ Central de Consolidação de Relatórios")
             
@@ -1114,7 +1166,7 @@ else:
                         df_ret['Chave_Nome'] = df_ret['Chave_Nome'].apply(buscar_melhor_match)
                         df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
-                        df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
+                        df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral calculado'], axis=1).fillna(0)
                         
                         col_rt_fibra = next((c for c in df_ret.columns if 'FIBRA' in str(c).upper() and 'VALID' in str(c).upper()), None)
                         if not col_rt_fibra: col_rt_fibra = next((c for c in df_ret.columns if 'FIBRA' in str(c).upper()), None)
@@ -1635,10 +1687,11 @@ else:
             
             st.markdown("---")
 
-            aba_desempenho, aba_ferias, aba_wiki, aba_conta = st.tabs([
+            aba_desempenho, aba_ferias, aba_wiki, aba_calculadora, aba_conta = st.tabs([
                 "📊 Meu Desempenho", 
                 "🌴 Minhas Férias", 
                 "📚 Base de Conhecimento", 
+                "🧮 Calculadora",
                 "⚙️ Minha Conta"
             ])
 
@@ -1813,6 +1866,9 @@ else:
                     st.markdown("✔️ Manuais de Sistemas e Plataformas\n✔️ Scripts de Retenção e Argumentação\n✔️ Dicas de Qualidade e CSAT")
                 with c_w2:
                     st.markdown("✔️ Regras de Ponto, Pausas e Escala\n✔️ Comunicados Oficiais\n✔️ Atualizações de Planos e Ofertas")
+                    
+            with aba_calculadora:
+                renderizar_calculadora()
 
             with aba_conta:
                 st.markdown("### ⚙️ Configurações de Segurança")
