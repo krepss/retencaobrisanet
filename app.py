@@ -127,6 +127,16 @@ st.markdown("""
         .btn-wiki:hover {
             background-color: #0056b3;
         }
+        .faixa-ativa {
+            background-color: #d4edda !important;
+            color: #155724 !important;
+            font-weight: bold;
+            border-left: 4px solid #28a745;
+        }
+        .faixa-inativa {
+            background-color: #f8f9fa;
+            color: #6c757d;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -222,7 +232,6 @@ def ms_para_segundos(ms):
 
 def limpar_nome_duplo(nome):
     if pd.isna(nome): return ""
-    # Remove espaços extras duplos e coloca no formato Title Case correto
     return " ".join(str(nome).strip().split()).title()
 
 def calcular_tempo_empresa(data_str):
@@ -251,7 +260,6 @@ def obter_ultima_atualizacao():
         commits = repo.get_commits(path="dados_consolidados_master.csv")
         if commits.totalCount > 0:
             data_utc = commits[0].commit.author.date
-            # Converte UTC para Horário de Brasília (UTC-3)
             data_br = data_utc - timedelta(hours=3)
             return data_br.strftime("%d/%m/%Y às %H:%M:%S")
         return "Sem registros"
@@ -552,6 +560,7 @@ else:
                 if mes_ferias == mes_view.upper(): return 'Férias'
                 return 'Ativo'
             df_periodo_mapeado['Status_Dinamico'] = df_periodo_mapeado.apply(identificar_status_unificado, axis=1)
+            df_periodo_mapeado['Nome Exibição'] = df_periodo_mapeado['Nome Exibição'].apply(limpar_nome_duplo)
 
         aba_dashboard, aba_retencao, aba_comissao, aba_ponto, aba_equipe, aba_ferias, aba_relatorio, aba_feedback, aba_calculadora, aba_upload = st.tabs([
             "📊 Dashboard", 
@@ -1289,22 +1298,23 @@ else:
             st.markdown(f"<h2>👋 Olá, {primeiro_nome}!</h2>", unsafe_allow_html=True)
             
             col_email_periodo = 'E-MAIL' if 'E-MAIL' in df_periodo.columns else 'E-mail'
-            df_completo_agente = df_completo[df_completo[col_email_periodo].str.strip().str.lower() == st.session_state.user_email.strip().lower()].copy()
             
-            if not df_completo_agente.empty and 'Faltas' in df_completo_agente.columns:
+            # Filtro para olhar as faltas SOMENTE no mês que está sendo visualizado (mes_view)
+            df_periodo_agente = df_periodo[df_periodo[col_email_periodo].str.strip().str.lower() == st.session_state.user_email.strip().lower()].copy()
+            
+            if not df_periodo_agente.empty and 'Faltas' in df_periodo_agente.columns:
                 def get_status_global_ag(row):
                     if str(row.get('STATUS', 'ATIVO')).strip().upper() == 'AFASTADO': return 'Afastado'
                     mes_f = str(row.get('FÉRIAS 2026', '')).strip().upper()
-                    if mes_f == str(row.get('Mês', '')).strip().upper(): return 'Férias'
+                    if mes_f == str(row.get('text_mes', '')).strip().upper(): return 'Férias'
                     return 'Ativo'
                 
-                df_completo_agente['Status_Dinamico'] = df_completo_agente.apply(get_status_global_ag, axis=1)
-                df_completo_agente['Faltas_Reais'] = df_completo_agente.apply(lambda r: pd.to_numeric(r.get('Faltas', 0), errors='coerce') if r['Status_Dinamico'] == 'Ativo' else 0, axis=1).fillna(0)
-                df_faltou_ag = df_completo_agente[df_completo_agente['Faltas_Reais'] > 0]
+                df_periodo_agente['Status_Dinamico'] = df_periodo_agente.apply(get_status_global_ag, axis=1)
+                df_periodo_agente['Faltas_Reais'] = df_periodo_agente.apply(lambda r: pd.to_numeric(r.get('Faltas', 0), errors='coerce') if r['Status_Dinamico'] == 'Ativo' else 0, axis=1).fillna(0)
+                df_faltou_ag = df_periodo_agente[df_periodo_agente['Faltas_Reais'] > 0]
                 
                 if not df_faltou_ag.empty:
-                    meses_falta_ag = ", ".join((df_faltou_ag['Mês'].astype(str) + "/" + df_faltou_ag['Ano'].astype(str)).tolist())
-                    st.markdown(f"<div class='detractor-box' style='background-color:#fff5f5;border-color:#feb2b2;color:#c53030;'>⚠️ <b>Atenção:</b> Você possui registro de falta(s) no seu histórico (<b>{meses_falta_ag}</b>). Mantenha sua aderência e presença em dia!</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='detractor-box' style='background-color:#fff5f5;border-color:#feb2b2;color:#c53030;'>⚠️ <b>Atenção:</b> Você possui registro de falta(s) no mês selecionado (<b>{mes_view}/{ano_view}</b>). Mantenha sua aderência e presença em dia!</div>", unsafe_allow_html=True)
             
             st.markdown("---")
 
@@ -1352,7 +1362,7 @@ else:
                     elif str(meus_dados_cadastrais.get('STATUS', '')).strip().upper() == 'AFASTADO': status_agente_mes = 'Afastado'
                     minhas_faltas = int(dados['Faltas']) if 'Faltas' in df_periodo.columns and pd.notna(dados.get('Faltas')) and status_agente_mes == 'Ativo' else 0
                     
-                    # CÁLCULO DE COMISSÃO DO AGENTE
+                    # CÁLCULO DE COMISSÃO DO AGENTE (Ajustado com Diamantes)
                     minha_comissao = calcular_comissao_rv(
                         taxa_ret=my_tx_ret,
                         vol_fibra=dados.get('RT_Fibra_Validas', 0.0),
@@ -1421,9 +1431,10 @@ else:
 
                     st.markdown("---")
                     st.markdown("### 📈 Minha Evolução Histórica")
-                    if not df_completo_agente.empty:
-                        df_completo_agente['Nome Exibição'] = "Eu"
-                        df_hist_plot_ag = obter_dados_historicos(df_completo_agente, "Eu")
+                    df_completo_agente_hist = df_completo[df_completo[col_email_periodo].str.strip().str.lower() == st.session_state.user_email.strip().lower()].copy()
+                    if not df_completo_agente_hist.empty:
+                        df_completo_agente_hist['Nome Exibição'] = "Eu"
+                        df_hist_plot_ag = obter_dados_historicos(df_completo_agente_hist, "Eu")
                         
                         if not df_hist_plot_ag.empty and len(df_hist_plot_ag) > 0:
                             indicadores_hist_ag = ['CSAT Ponderado (%)', 'Índice IR (%)', 'Taxa Retenção (%)', 'Aderência (%)', 'Conformidade (%)', 'Faltas']
