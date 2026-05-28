@@ -286,7 +286,6 @@ def calcular_comissao_rv(taxa_ret, vol_fibra, vol_adic, diamantes):
         comissao_retencao = (vol_fibra * multiplicador) + (vol_adic * 1.50)
         comissao_total = comissao_retencao + valor_diamantes
     else:
-        # Não bateu meta de retenção: Perde a RV de retenção e ganha só 50% dos Diamantes
         comissao_total = valor_diamantes * 0.50
         
     return comissao_total
@@ -830,22 +829,22 @@ else:
                 
                 with tab_g1:
                     df_melt_pct1 = df_final_rel.melt(id_vars='Período', value_vars=['Taxa de Retenção', 'CSAT Média', 'Índice IR Média'], var_name='Indicador', value_name='Valor (%)')
-                    fig_pct1 = px.line(df_melt_pct1, x='Período', y='Valor (%)', color='Indicador', markers=True, title="Evolução de Qualidade e Retenção (%)")
-                    fig_pct1.update_traces(textposition="top center", texttemplate='%{y:.1f}%')
+                    fig_pct1 = px.line(df_melt_pct1, x='Período', y='Valor (%)', color='Indicador', markers=True, text='Valor (%)', title="Evolução de Qualidade e Retenção (%)")
+                    fig_pct1.update_traces(textposition="top center", texttemplate='%{text:.1f}%')
                     fig_pct1.update_yaxes(range=[0, 105])
                     st.plotly_chart(fig_pct1, use_container_width=True)
 
                 with tab_g2:
                     df_melt_pct2 = df_final_rel.melt(id_vars='Período', value_vars=['Conformidade Média', 'Aderência Média'], var_name='Indicador', value_name='Valor (%)')
-                    fig_pct2 = px.line(df_melt_pct2, x='Período', y='Valor (%)', color='Indicador', markers=True, title="Evolução de Processos (%)", color_discrete_sequence=['#9932cc', '#ba55d3'])
-                    fig_pct2.update_traces(textposition="top center", texttemplate='%{y:.1f}%')
+                    fig_pct2 = px.line(df_melt_pct2, x='Período', y='Valor (%)', color='Indicador', markers=True, text='Valor (%)', title="Evolução de Processos (%)", color_discrete_sequence=['#9932cc', '#ba55d3'])
+                    fig_pct2.update_traces(textposition="top center", texttemplate='%{text:.1f}%')
                     fig_pct2.update_yaxes(range=[0, 105])
                     st.plotly_chart(fig_pct2, use_container_width=True)
 
                 with tab_g3:
                     df_melt_vol = df_final_rel.melt(id_vars='Período', value_vars=['Total Oportunidades Retenção', 'Retenções Realizadas (Vol)', 'Total Avaliações CSAT', 'Absenteísmo (Faltas)'], var_name='Métrica', value_name='Volume')
-                    fig_vol = px.bar(df_melt_vol, x='Período', y='Volume', color='Métrica', barmode='group', title="Volumetria Absoluta da Operação", color_discrete_sequence=['#ffc107', '#28a745', '#17a2b8', '#dc3545'])
-                    fig_vol.update_traces(textposition="outside", texttemplate='%{y:.0f}')
+                    fig_vol = px.bar(df_melt_vol, x='Período', y='Volume', color='Métrica', barmode='group', text='Volume', title="Volumetria Absoluta da Operação", color_discrete_sequence=['#ffc107', '#28a745', '#17a2b8', '#dc3545'])
+                    fig_vol.update_traces(textposition="outside", texttemplate='%{text:.0f}')
                     st.plotly_chart(fig_vol, use_container_width=True)
                 
                 st.markdown("---")
@@ -1027,7 +1026,7 @@ else:
             st.markdown("### 📋 Status da Validação")
             c_chk1, c_chk2, c_chk3, c_chk4, c_chk5, c_chk6, c_chk7 = st.columns(7)
             with c_chk1: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Aderência e Conformidade'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>1. Ade & Conf</b></div>", unsafe_allow_html=True)
-            with c_chk2: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Faltas Diárias'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>2. Faltas</b></div>", unsafe_allow_html=True)
+            with c_chk2: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Faltas Diárias'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>2. Faltas WFM</b></div>", unsafe_allow_html=True)
             with c_chk3: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Pesquisa (CSAT/IR)'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>3. Pesquisas</b></div>", unsafe_allow_html=True)
             with c_chk4: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Chat'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>4. Chat</b></div>", unsafe_allow_html=True)
             with c_chk5: st.markdown(f"<div style='background-color:{'#e6fffa;border:1px solid #319795;' if relatorios_identificados['Voz'] else '#fff5f5;border:1px solid #e53e3e;'};padding:10px;border-radius:5px;text-align:center;'><b>5. Voz</b></div>", unsafe_allow_html=True)
@@ -1626,7 +1625,7 @@ else:
                     elif str(meus_dados_cadastrais.get('STATUS', '')).strip().upper() == 'AFASTADO': status_agente_mes = 'Afastado'
                     minhas_faltas = int(dados['Faltas']) if 'Faltas' in df_periodo.columns and pd.notna(dados.get('Faltas')) and status_agente_mes == 'Ativo' else 0
                     
-                    # CÁLCULO DE COMISSÃO DO AGENTE (Ajustado com Diamantes)
+                    # CÁLCULO DE COMISSÃO DO AGENTE
                     minha_comissao = calcular_comissao_rv(
                         taxa_ret=my_tx_ret,
                         vol_fibra=dados.get('RT_Fibra_Validas', 0.0),
