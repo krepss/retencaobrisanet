@@ -220,6 +220,10 @@ def ms_para_segundos(ms):
     if pd.isna(ms): return 0.0
     return ms / 1000
 
+def limpar_nome_duplo(nome):
+    if pd.isna(nome): return ""
+    return " ".join(str(nome).strip().split()).title()
+
 def calcular_tempo_empresa(data_str):
     if pd.isna(data_str) or str(data_str).strip() == "": return "Não informada"
     try:
@@ -286,6 +290,7 @@ def calcular_comissao_rv(taxa_ret, vol_fibra, vol_adic, diamantes):
         comissao_retencao = (vol_fibra * multiplicador) + (vol_adic * 1.50)
         comissao_total = comissao_retencao + valor_diamantes
     else:
+        # Não bateu meta de retenção: Perde a RV de retenção e ganha só 50% dos Diamantes
         comissao_total = valor_diamantes * 0.50
         
     return comissao_total
@@ -296,6 +301,8 @@ def carregar_dados_mestre_seguro():
     df['text_ano'] = df['Ano'].astype(str).str.strip()
     df['text_mes'] = df['Mês'].astype(str).str.strip().str.title()
     df['Periodo_Competencia'] = df['text_mes'] + "/" + df['text_ano']
+    if 'Nome Exibição' in df.columns:
+        df['Nome Exibição'] = df['Nome Exibição'].apply(limpar_nome_duplo)
     return df
 
 def obter_dados_historicos(df, agente="Todos"):
@@ -304,7 +311,7 @@ def obter_dados_historicos(df, agente="Todos"):
     
     if agente != "Todos":
         if 'Nome Exibição' not in df_hist.columns:
-            df_hist['Nome Exibição'] = df_hist['Chave_Nome'].str.title() if 'Chave_Nome' in df_hist.columns else "Desconhecido"
+            df_hist['Nome Exibição'] = df_hist['Chave_Nome'].apply(limpar_nome_duplo) if 'Chave_Nome' in df_hist.columns else "Desconhecido"
         df_hist = df_hist[df_hist['Nome Exibição'] == agente]
     
     if df_hist.empty:
@@ -402,7 +409,7 @@ if not st.session_state.logged_in:
                                 st.session_state.perfil = "Agente"
                                 st.session_state.user_email = email_limpo
                                 col_nome = 'COLABORADOR' if 'COLABORADOR' in dados_usr else 'Nome'
-                                st.session_state.user_nome = str(dados_usr[col_nome]).title()
+                                st.session_state.user_nome = limpar_nome_duplo(dados_usr[col_nome])
                                 salvar_sessao(email_limpo, "Agente", st.session_state.user_nome)
                                 st.success("Login efetuado!")
                                 time.sleep(0.5)
@@ -497,6 +504,8 @@ else:
                 if mes_ferias == mes_view.upper(): return 'Férias'
                 return 'Ativo'
             df_periodo_mapeado['Status_Dinamico'] = df_periodo_mapeado.apply(identificar_status_unificado, axis=1)
+            # Aplica limpeza no nome para o dashboard ficar perfeito
+            df_periodo_mapeado['Nome Exibição'] = df_periodo_mapeado['Nome Exibição'].apply(limpar_nome_duplo)
 
         aba_dashboard, aba_retencao, aba_comissao, aba_ponto, aba_equipe, aba_ferias, aba_relatorio, aba_feedback, aba_upload = st.tabs([
             "📊 Dashboard", 
@@ -899,6 +908,9 @@ else:
                 else:
                     df_feed_filtrado = df_feed[df_feed['Periodo_Competencia'].isin(periodos_selecionados)].copy()
                     
+                    # APLICA LIMPEZA DOS NOMES ANTES DO GROUPBY PARA EVITAR DUPLICADOS COMO "FRANCISCO EVERTON" e "FRANCISCO EVERTON "
+                    df_feed_filtrado['Nome Exibição'] = df_feed_filtrado['Nome Exibição'].apply(limpar_nome_duplo)
+                    
                     cols_to_num = ['Total_Pesq_CSAT', 'Boas_Pesq_CSAT', 'Total_Pesq_IR', 'Sim_Pesq_IR', 'RT geral valido', 'RT geral calculado', 'Faltas', 'Aderência (%)', 'Conformidade (%)']
                     for c in cols_to_num:
                         if c in df_feed_filtrado.columns:
@@ -1089,7 +1101,7 @@ else:
                         df_ret['Chave_Nome'] = df_ret['Chave_Nome'].apply(buscar_melhor_match)
                         df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
-                        df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral valido'], axis=1).fillna(0)
+                        df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral calculado'], axis=1).fillna(0)
                         
                         col_rt_fibra = next((c for c in df_ret.columns if 'FIBRA' in str(c).upper() and 'VALID' in str(c).upper()), None)
                         if not col_rt_fibra: col_rt_fibra = next((c for c in df_ret.columns if 'FIBRA' in str(c).upper()), None)
@@ -1625,7 +1637,7 @@ else:
                     elif str(meus_dados_cadastrais.get('STATUS', '')).strip().upper() == 'AFASTADO': status_agente_mes = 'Afastado'
                     minhas_faltas = int(dados['Faltas']) if 'Faltas' in df_periodo.columns and pd.notna(dados.get('Faltas')) and status_agente_mes == 'Ativo' else 0
                     
-                    # CÁLCULO DE COMISSÃO DO AGENTE
+                    # CÁLCULO DE COMISSÃO DO AGENTE (Ajustado com Diamantes)
                     minha_comissao = calcular_comissao_rv(
                         taxa_ret=my_tx_ret,
                         vol_fibra=dados.get('RT_Fibra_Validas', 0.0),
