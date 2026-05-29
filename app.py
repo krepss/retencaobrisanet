@@ -146,10 +146,6 @@ st.markdown("""
             font-weight: bold;
             border-left: 4px solid #28a745;
         }
-        .faixa-inativa {
-            background-color: #f8f9fa;
-            color: #6c757d;
-        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -1189,7 +1185,9 @@ else:
                         df_ret['Chave_Nome'] = df_ret['Chave_Nome'].apply(buscar_melhor_match)
                         df_ret['Taxa_Retencao_Original'] = df_ret['% de retenção'].apply(limpar_porcentagem)
                         df_ret['RT geral valido'] = pd.to_numeric(df_ret['RT geral valido'], errors='coerce').fillna(0)
-                        df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else row['RT geral calculado'], axis=1).fillna(0)
+                        
+                        # CORREÇÃO CRÍTICA DO CÁLCULO RT GERAL CALCULADO
+                        df_ret['RT geral calculado'] = df_ret.apply(lambda row: (row['RT geral valido'] / (row['Taxa_Retencao_Original'] / 100)) if row['Taxa_Retencao_Original'] > 0 else 0.0, axis=1).fillna(0)
                         
                         col_rt_fibra = next((c for c in df_ret.columns if 'FIBRA' in str(c).upper() and 'VALID' in str(c).upper()), None)
                         if not col_rt_fibra: col_rt_fibra = next((c for c in df_ret.columns if 'FIBRA' in str(c).upper()), None)
