@@ -354,7 +354,9 @@ def carregar_dados_mestre_seguro():
     try:
         df = ler_csv_via_api_github("dados_consolidados_master.csv")
         if df.empty: return df
-        df['text_ano'] = df['Ano'].astype(str).str.strip()
+        
+        # Garante que as datas fiquem seguras (replace '.0' previne bugs na conversão de anos como 2026.0)
+        df['text_ano'] = df['Ano'].astype(str).str.replace('.0', '', regex=False).str.strip()
         df['text_mes'] = df['Mês'].astype(str).str.strip().str.title()
         df['Periodo_Competencia'] = df['text_mes'] + "/" + df['text_ano']
         
@@ -1119,7 +1121,8 @@ else:
                         col_nome = 'COLABORADOR' if 'COLABORADOR' in df_users.columns else 'Nome'
                         
                         df_users['Chave_Nome'] = df_users[col_nome].astype(str).str.strip().str.upper()
-                        df_users['Chave_Nome'] = df_users['Chave_Nome'].apply(limpar_nome_duplo)
+                        # CORREÇÃO: Mantém os nomes da base de usuários em CAIXA ALTA, apenas normaliza os espaços
+                        df_users['Chave_Nome'] = df_users['Chave_Nome'].apply(lambda x: " ".join(x.split()))
                         df_users = df_users.drop_duplicates(subset=['Chave_Nome'], keep='first')
                         nomes_mestre = df_users['Chave_Nome'].tolist()
 
@@ -1276,6 +1279,18 @@ else:
                 if modo_visao == "Mostrar Apenas Ativos": df_calculado = df_periodo_mapeado[df_periodo_mapeado['Status_Dinamico'] == 'Ativo'].copy()
                 else: df_calculado = df_periodo_mapeado.copy()
 
+                # SAFETY NET: Garante que todas as colunas existam para não quebrar o painel
+                colunas_garantidas = [
+                    'Total_Pesq_CSAT', 'Boas_Pesq_CSAT', 'Total_Pesq_IR', 'Sim_Pesq_IR', 'CSAT_Media', 'IR_Percentual',
+                    'Taxa_Retencao_Original', 'RT_Fibra_Validas', 'RT_Adicional_Validas', 'Diamantes',
+                    'Faltas', 'Aderência (%)', 'Conformidade (%)', 'Vol. Chat', 'Vol. Voz', 
+                    'TMA Chat (Min)', 'TMA Voz (Min)', 'TPC Chat (Seg)', 'TPC Voz (Seg)', 
+                    'RT geral valido', 'RT geral calculado'
+                ]
+                for col in colunas_garantidas:
+                    if col not in df_calculado.columns:
+                        df_calculado[col] = 0.0
+
                 if 'Total_Pesq_CSAT' in df_calculado.columns:
                     df_calculado['CSAT_Agente (%)'] = (df_calculado['Boas_Pesq_CSAT'] / df_calculado['Total_Pesq_CSAT'] * 100).fillna(0)
                     df_calculado['IR_Agente (%)'] = (df_calculado['Sim_Pesq_IR'] / df_calculado['Total_Pesq_IR'] * 100).fillna(0)
@@ -1296,7 +1311,7 @@ else:
                     (df_calculado['Faltas'] > 0)
                 ].copy()
                 
-                if 'Diamantes' not in df_calculado.columns: df_calculado['Diamantes'] = 0
+                # APLICA CÁLCULO DE COMISSÃO E GAMIFICAÇÃO
                 df_calculado['Comissão (R$)'] = df_calculado.apply(lambda r: calcular_comissao_rv(
                     r.get('% Retenção', 0.0),
                     r.get('RT_Fibra_Validas', 0.0),
@@ -1672,6 +1687,7 @@ else:
             
             col_email_periodo = 'E-MAIL' if 'E-MAIL' in df_periodo.columns else 'E-mail'
             
+            # Filtro para olhar as faltas SOMENTE no mês que está sendo visualizado (mes_view)
             df_periodo_agente = df_periodo[df_periodo[col_email_periodo].str.strip().str.lower() == st.session_state.user_email.strip().lower()].copy()
             
             if not df_periodo_agente.empty and 'Faltas' in df_periodo_agente.columns:
