@@ -13,8 +13,8 @@ from datetime import datetime, timedelta
 # ==========================================
 st.set_page_config(page_title="Sistema Operacional 360", page_icon="🎯", layout="wide")
 
-GESTOR_EMAIL = "gestor"
-GESTOR_SENHA = "admin"
+GESTOR_EMAIL = st.secrets["GESTOR_EMAIL"]
+GESTOR_SENHA = st.secrets["GESTOR_SENHA"]
 
 # METAS OFICIAIS DA OPERAÇÃO BRISANET
 META_CSAT = 92.0
