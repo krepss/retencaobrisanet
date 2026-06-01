@@ -304,7 +304,39 @@ def calcular_comissao_rv(taxa_ret, vol_fibra, vol_adic, diamantes):
         comissao_total = valor_diamantes * 0.50
         
     return comissao_total
+# ==========================================
+# FUNÇÃO PARA SALVAR HISTÓRICO DE ABSENTEÍSMO
+# ==========================================
+def salvar_historico_absenteismo(mes, ano, total_faltas, minutos_perdidos, total_agentes_ativos, dias_uteis=26):
+    """
+    Calcula a taxa de absenteísmo e salva o registro no arquivo historico_absenteismo.csv.
+    Jornada padrão: 6 horas/dia.
+    """
+    horas_planejadas = total_agentes_ativos * dias_uteis * 6
+    horas_perdidas = (total_faltas * 6) + (minutos_perdidos / 60)
+    taxa = (horas_perdidas / horas_planejadas * 100) if horas_planejadas > 0 else 0.0
 
+    novo_registro = pd.DataFrame([{
+        "Mês/Ano": f"{mes[:3]}/{ano[-2:]}",  # ex: "Mai/2026"
+        "Total Faltas (dias)": total_faltas,
+        "Minutos Perdidos (extras)": minutos_perdidos,
+        "Horas Planejadas": horas_planejadas,
+        "Horas Perdidas": horas_perdidas,
+        "Taxa Absenteísmo (%)": taxa
+    }])
+
+    # Carregar histórico existente
+    try:
+        df_hist = ler_csv_via_api_github("historico_absenteismo.csv")
+        # Remove registro do mesmo mês/ano se existir (evita duplicação)
+        df_hist = df_hist[df_hist["Mês/Ano"] != novo_registro["Mês/Ano"].iloc[0]]
+        df_hist = pd.concat([df_hist, novo_registro], ignore_index=True)
+    except:
+        df_hist = novo_registro
+
+    # Salvar no GitHub
+    enviar_para_github("historico_absenteismo.csv", df_hist.to_csv(index=False))
+    return taxa
 def renderizar_calculadora():
     st.header("🧮 Simulador de Remuneração Variável")
     st.markdown("Use esta calculadora para prever a comissão gerada com base em diferentes cenários de atingimento de metas.")
@@ -586,7 +618,8 @@ else:
                 return 'Ativo'
             df_periodo_mapeado['Status_Dinamico'] = df_periodo_mapeado.apply(identificar_status_unificado, axis=1)
 
-        aba_dashboard, aba_retencao, aba_comissao, aba_ponto, aba_equipe, aba_ferias, aba_relatorio, aba_feedback, aba_calculadora, aba_upload = st.tabs([
+        aba_absenteismo, aba_dashboard, aba_retencao, aba_comissao, aba_ponto, aba_equipe, aba_ferias, aba_relatorio, aba_feedback, aba_calculadora, aba_upload = st.tabs([
+            "⏰ Absenteísmo",
             "📊 Dashboard", 
             "🎯 Retenção",
             "💰 Comissões",
@@ -597,8 +630,7 @@ else:
             "📈 Avaliação & Feedback",
             "🧮 Calculadora",
             "⚙️ Upload"
-        ])
-        
+])
         with aba_retencao:
             st.header("🎯 Inteligência e Qualidade de Retenção")
             if not base_mestre_existe or df_periodo_mapeado.empty:
@@ -1234,7 +1266,29 @@ else:
                         df_novo['Nome Exibição'] = df_novo['Chave_Nome'].apply(limpar_nome_duplo)
                         df_novo['Mês'] = mes_up
                         df_novo['Ano'] = str(ano_up)
+                        # ==========================================
+                        # CÁLCULO E SALVAMENTO DO HISTÓRICO DE ABSENTEÍSMO
+                        # ==========================================
+                        def get_status_upload(row):
+                            if str(row.get('STATUS', 'ATIVO')).strip().upper() == 'AFASTADO':
+                                return 'Afastado'
+                            mes_ferias = str(row.get('FÉRIAS 2026', '')).strip().upper()
+                            if mes_ferias == mes_up.upper():
+                                return 'Férias'
+                            return 'Ativo'
                         
+                        df_novo['Status_Dinamico'] = df_novo.apply(get_status_upload, axis=1)
+                        
+                        total_faltas = df_novo[df_novo['Status_Dinamico'] == 'Ativo']['Faltas'].sum()
+                        total_agentes_ativos = df_novo[df_novo['Status_Dinamico'] == 'Ativo'].shape[0]
+                        
+                        minutos_perdidos_extras = st.number_input(
+                            "⏱️ Minutos perdidos adicionais da equipe (atrasos, saídas, etc.)",
+                            min_value=0, value=0, step=5,
+                            help="Valores manuais não contidos no arquivo de faltas diárias."
+                        )
+                        
+                        salvar_historico_absenteismo(mes_up, ano_up, total_faltas, minutos_perdidos_extras, total_agentes_ativos)
                         if 'TPC Chat (Seg)' not in df_novo.columns: df_novo['TPC Chat (Seg)'] = 0.0
                         if 'TPC Voz (Seg)' not in df_novo.columns: df_novo['TPC Voz (Seg)'] = 0.0
                         if 'Faltas' not in df_novo.columns: df_novo['Faltas'] = 0
@@ -1270,6 +1324,38 @@ else:
                         st.rerun()
                     except Exception as e: st.error(f"Erro no processamento: {e}")
 
+        with aba_absenteismo:
+            st.header("⏰ Histórico de Absenteísmo")
+            st.markdown("Acompanhe a evolução mensal da taxa de ausência da operação, considerando faltas (conformidade = 0) e minutos perdidos extras (atrasos, saídas).")
+
+            # Carregar histórico do GitHub
+        try:
+            df_abs = ler_csv_via_api_github("historico_absenteismo.csv")
+        except:
+            df_abs = pd.DataFrame(columns=[
+                "Mês/Ano", "Total Faltas (dias)", "Minutos Perdidos (extras)",
+                "Horas Planejadas", "Horas Perdidas", "Taxa Absenteísmo (%)"
+            ])
+
+        if not df_abs.empty:
+            # Gráfico de evolução
+            fig_abs = px.line(df_abs, x="Mês/Ano", y="Taxa Absenteísmo (%)", 
+            markers=True, text="Taxa Absenteísmo (%)",
+            title="Evolução da Taxa de Absenteísmo")
+            fig_abs.update_traces(textposition="top center", texttemplate='%{text:.2f}%')
+            fig_abs.update_yaxes(range=[0, max(df_abs["Taxa Absenteísmo (%)"].max() + 5, 10)])
+            st.plotly_chart(fig_abs, use_container_width=True)
+
+            # Tabela detalhada
+            st.dataframe(df_abs.style.format({
+            "Total Faltas (dias)": "{:.0f}",
+            "Minutos Perdidos (extras)": "{:.0f}",
+            "Horas Planejadas": "{:.1f}",
+            "Horas Perdidas": "{:.1f}",
+            "Taxa Absenteísmo (%)": "{:.2f}%"
+        }), use_container_width=True)
+        else:
+            st.info("Nenhum registro de absenteísmo ainda. Após consolidar um mês na aba 'Upload', o histórico aparecerá aqui.")
         with aba_dashboard:
             if not base_mestre_existe: st.warning("📢 Base mestre indisponível.")
             elif not dados_carregados: st.warning(f"⚠️ {erro_dados}")
@@ -1574,49 +1660,6 @@ else:
                     
                 st.markdown("---")
                 
-                st.subheader(f"📅 Absenteísmo no Mês ({mes_view}/{ano_view})")
-                
-                if 'Faltas' in df_periodo_mapeado.columns:
-                    df_faltas_mes = df_periodo_mapeado.copy()
-                    df_faltas_mes['Faltas_Reais'] = df_faltas_mes.apply(lambda r: pd.to_numeric(r.get('Faltas', 0), errors='coerce') if r['Status_Dinamico'] == 'Ativo' else 0, axis=1).fillna(0)
-                    
-                    if filtro_agente == "Todos":
-                        st.markdown("#### ⚙️ Calculadora de Absenteísmo da Equipe")
-                        st.markdown("Considere a jornada padrão de **6 horas diárias (Seg a Sáb)** para os operadores ativos.")
-                        col_calc1, col_calc2 = st.columns(2)
-                        dias_uteis = col_calc1.number_input("Dias previstos de escala no mês:", min_value=1, max_value=31, value=26)
-                        perdas_minutos = col_calc2.number_input("Perdas extras da equipe em minutos (Atrasos, saídas, etc):", min_value=0, value=0)
-                        
-                        total_ativos = len(df_faltas_mes[df_faltas_mes['Status_Dinamico'] == 'Ativo'])
-                        total_faltas_equipe = df_faltas_mes['Faltas_Reais'].sum()
-                        
-                        horas_planejadas = total_ativos * dias_uteis * 6
-                        horas_perdidas = (total_faltas_equipe * 6) + (perdas_minutos / 60)
-                        taxa_abs = (horas_perdidas / horas_planejadas * 100) if horas_planejadas > 0 else 0.0
-                        
-                        st.markdown(f"<div class='kpi-card' style='border-left-color: #e53e3e; max-width: 400px; margin: 0 auto;'><div class='kpi-title'>Taxa de Absenteísmo Estimada</div><div class='kpi-value' style='color:#e53e3e;'>{taxa_abs:.2f}%</div><div style='font-size:12px;color:#6c757d;margin-top:5px;'>Perda: {horas_perdidas:.1f}h / Previsto: {horas_planejadas:.0f}h</div></div>", unsafe_allow_html=True)
-                        st.markdown("<br>", unsafe_allow_html=True)
-                    
-                    df_faltou = df_faltas_mes[df_faltas_mes['Faltas_Reais'] > 0].copy()
-                    if filtro_agente != "Todos":
-                        df_faltou = df_faltou[df_faltou['Nome Exibição'] == filtro_agente]
-                        
-                    if not df_faltou.empty:
-                        df_faltou_grp = df_faltou.groupby('Nome Exibição').agg(
-                            Total_Faltas=('Faltas_Reais', 'sum')
-                        ).reset_index()
-                        
-                        df_faltou_grp.rename(columns={'Nome Exibição': 'Operador', 'Total_Faltas': 'Faltas no Mês'}, inplace=True)
-                        df_faltou_grp = df_faltou_grp.sort_values(by='Faltas no Mês', ascending=False)
-                        
-                        st.dataframe(df_faltou_grp.style.format({'Faltas no Mês': '{:.0f}'}), use_container_width=True)
-                    else:
-                        st.success(f"🎉 Nenhuma falta registrada na operação em {mes_view}/{ano_view} (entre os ativos)!")
-                else:
-                    st.info(f"O relatório de faltas para {mes_view}/{ano_view} não está disponível.")
-
-                st.markdown("---")
-
                 st.subheader("👥 Detalhamento Operacional por Colaborador")
                 colunas_tabela = ['Nome Exibição', 'Status_Dinamico', 'Comissão (R$)', 'Faltas', 'CSAT_Agente (%)', 'IR_Agente (%)', 'Conformidade (%)', 'Aderência (%)', 'Vol. Chat', 'TMA Chat (Min)']
                 if 'TPC Chat (Seg)' in df_final_escopo.columns: colunas_tabela.append('TPC Chat (Seg)')
