@@ -1325,37 +1325,94 @@ else:
                     except Exception as e: st.error(f"Erro no processamento: {e}")
 
         with aba_absenteismo:
-            st.header("⏰ Histórico de Absenteísmo")
-            st.markdown("Acompanhe a evolução mensal da taxa de ausência da operação, considerando faltas (conformidade = 0) e minutos perdidos extras (atrasos, saídas).")
-
-            # Carregar histórico do GitHub
-        try:
-            df_abs = ler_csv_via_api_github("historico_absenteismo.csv")
-        except:
-            df_abs = pd.DataFrame(columns=[
-                "Mês/Ano", "Total Faltas (dias)", "Minutos Perdidos (extras)",
-                "Horas Planejadas", "Horas Perdidas", "Taxa Absenteísmo (%)"
-            ])
-
-        if not df_abs.empty:
-            # Gráfico de evolução
-            fig_abs = px.line(df_abs, x="Mês/Ano", y="Taxa Absenteísmo (%)", 
-            markers=True, text="Taxa Absenteísmo (%)",
-            title="Evolução da Taxa de Absenteísmo")
-            fig_abs.update_traces(textposition="top center", texttemplate='%{text:.2f}%')
-            fig_abs.update_yaxes(range=[0, max(df_abs["Taxa Absenteísmo (%)"].max() + 5, 10)])
-            st.plotly_chart(fig_abs, use_container_width=True)
-
-            # Tabela detalhada
-            st.dataframe(df_abs.style.format({
-            "Total Faltas (dias)": "{:.0f}",
-            "Minutos Perdidos (extras)": "{:.0f}",
-            "Horas Planejadas": "{:.1f}",
-            "Horas Perdidas": "{:.1f}",
-            "Taxa Absenteísmo (%)": "{:.2f}%"
-        }), use_container_width=True)
-        else:
-            st.info("Nenhum registro de absenteísmo ainda. Após consolidar um mês na aba 'Upload', o histórico aparecerá aqui.")
+            st.header("⏰ Absenteísmo - Cálculo Independente")
+            st.markdown("""
+            Faça o upload do arquivo de **Faltas Diárias** (formato WFM) e informe os minutos extras não registrados.  
+            O sistema contabilizará como falta todo dia em que a **Conformidade = 0**.
+            """)
+        
+            # ----- Carregar histórico existente (sempre visível) -----
+            try:
+                df_abs = ler_csv_via_api_github("historico_absenteismo.csv")
+                if not df_abs.empty:
+                    st.subheader("📈 Histórico de Absenteísmo")
+                    fig_abs = px.line(df_abs, x="Mês/Ano", y="Taxa Absenteísmo (%)", 
+                                      markers=True, text="Taxa Absenteísmo (%)",
+                                      title="Evolução da Taxa de Absenteísmo")
+                    fig_abs.update_traces(textposition="top center", texttemplate='%{text:.2f}%')
+                    fig_abs.update_yaxes(range=[0, max(df_abs["Taxa Absenteísmo (%)"].max() + 5, 10)])
+                    st.plotly_chart(fig_abs, use_container_width=True)
+        
+                    st.dataframe(df_abs.style.format({
+                        "Total Faltas (dias)": "{:.0f}",
+                        "Minutos Perdidos (extras)": "{:.0f}",
+                        "Horas Planejadas": "{:.1f}",
+                        "Horas Perdidas": "{:.1f}",
+                        "Taxa Absenteísmo (%)": "{:.2f}%"
+                    }), use_container_width=True)
+                else:
+                    st.info("Nenhum registro histórico encontrado. Faça o primeiro cálculo abaixo.")
+            except:
+                st.info("Nenhum histórico disponível ainda.")
+        
+            st.markdown("---")
+            st.subheader("➕ Novo Lançamento Mensal")
+        
+            # ----- Upload do arquivo de faltas (CSV) -----
+            arquivo_faltas = st.file_uploader("Arquivo CSV de Faltas Diárias (formato WFM)", type=["csv"])
+            
+            # ----- Parâmetros manuais -----
+            col1, col2 = st.columns(2)
+            with col1:
+                dias_uteis = st.number_input("Dias úteis no mês", min_value=1, max_value=31, value=26, step=1,
+                                             help="Quantos dias de trabalho no mês (ex: 26 para seg-sex + sábado)")
+            with col2:
+                minutos_extras = st.number_input("Minutos perdidos adicionais (atrasos, saídas)", min_value=0, value=0, step=5,
+                                                 help="Minutos extras não contabilizados como falta diária")
+        
+            # ----- Seleção do mês/ano -----
+            col3, col4 = st.columns(2)
+            with col3:
+                mes_ref = st.selectbox("Mês de referência", MESES, index=4)  # Maio como padrão
+            with col4:
+                ano_ref = st.selectbox("Ano de referência", ANOS)
+        
+            # ----- Botão para processar -----
+            if st.button("Calcular e Salvar Absenteísmo do Mês", type="primary", use_container_width=True):
+                if arquivo_faltas is None:
+                    st.error("❌ É necessário fazer o upload do arquivo CSV de faltas.")
+                else:
+                    try:
+                        # Ler CSV
+                        df_faltas = pd.read_csv(arquivo_faltas, sep=None, engine='python')
+                        # Normalizar nomes das colunas
+                        df_faltas.columns = df_faltas.columns.str.strip()
+                        # Identificar a coluna de conformidade (pode ser 'Conformidade' ou 'CONFORMIDADE')
+                        col_conf = next((c for c in df_faltas.columns if 'conformidade' in c.lower()), None)
+                        if col_conf is None:
+                            st.error("Arquivo não contém coluna de 'Conformidade'.")
+                        else:
+                            # Converter conformidade para número
+                            df_faltas[col_conf] = pd.to_numeric(df_faltas[col_conf].astype(str).str.replace(',', '.'), errors='coerce')
+                            # Total de faltas = número de linhas com conformidade == 0
+                            total_faltas = (df_faltas[col_conf] == 0.0).sum()
+                            
+                            # Contar agentes únicos (assumindo que todos os agentes listados estavam ativos no mês)
+                            col_agente = next((c for c in df_faltas.columns if 'agente' in c.lower()), None)
+                            if col_agente is None:
+                                # Se não encontrar, usar uma estimativa? Melhor pedir input
+                                total_agentes = st.number_input("Número de agentes ativos no mês (não identificado automaticamente)", min_value=1, value=1)
+                            else:
+                                total_agentes = df_faltas[col_agente].nunique()
+                            
+                            # Salvar histórico
+                            taxa = salvar_historico_absenteismo(mes_ref, ano_ref, total_faltas, minutos_extras, total_agentes, dias_uteis)
+                            st.success(f"✅ Registro de {mes_ref}/{ano_ref} salvo! Taxa de absenteísmo: {taxa:.2f}%")
+                            st.cache_data.clear()
+                            time.sleep(1)
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao processar arquivo: {e}")
         with aba_dashboard:
             if not base_mestre_existe: st.warning("📢 Base mestre indisponível.")
             elif not dados_carregados: st.warning(f"⚠️ {erro_dados}")
